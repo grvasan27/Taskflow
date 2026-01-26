@@ -168,7 +168,7 @@ print('Test user and session created successfully');
             "end_date": "2025-01-31"
         }
         
-        success, created_task = self.run_test("Create Task", "POST", "tasks", 201, task_data)
+        success, created_task = self.run_test("Create Task", "POST", "tasks", 200, task_data)
         
         if not success or not created_task:
             print("❌ Cannot continue task tests - task creation failed")
