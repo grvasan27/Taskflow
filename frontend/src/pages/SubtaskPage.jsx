@@ -6,6 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -23,9 +25,12 @@ import {
   CheckCircle2,
   Circle,
   Clock,
-  ExternalLink,
+  MessageSquare,
+  Edit2,
+  Save,
+  X,
 } from "lucide-react";
-import { format, parseISO, startOfDay } from "date-fns";
+import { format, parseISO, startOfDay, isBefore, addDays } from "date-fns";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -38,11 +43,14 @@ const SubtaskPage = ({ user }) => {
   const [showAddSubtask, setShowAddSubtask] = useState(false);
   const [newSubtask, setNewSubtask] = useState({
     name: "",
-    date: format(new Date(), "yyyy-MM-dd"),
+    start_date: format(new Date(), "yyyy-MM-dd"),
+    end_date: format(addDays(new Date(), 7), "yyyy-MM-dd"),
+    notes: "",
   });
   const [editingSubtask, setEditingSubtask] = useState(null);
-  const [editValue, setEditValue] = useState("");
+  const [editForm, setEditForm] = useState({});
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [notesDialog, setNotesDialog] = useState(null);
 
   // Fetch task and subtasks
   const fetchData = useCallback(async () => {
@@ -84,6 +92,11 @@ const SubtaskPage = ({ user }) => {
       return;
     }
 
+    if (newSubtask.start_date > newSubtask.end_date) {
+      toast.error("Start date must be before end date");
+      return;
+    }
+
     try {
       const response = await fetch(`${API}/tasks/${taskId}/subtasks`, {
         method: "POST",
@@ -96,7 +109,12 @@ const SubtaskPage = ({ user }) => {
 
       const subtask = await response.json();
       setSubtasks([...subtasks, subtask]);
-      setNewSubtask({ name: "", date: format(new Date(), "yyyy-MM-dd") });
+      setNewSubtask({
+        name: "",
+        start_date: format(new Date(), "yyyy-MM-dd"),
+        end_date: format(addDays(new Date(), 7), "yyyy-MM-dd"),
+        notes: "",
+      });
       setShowAddSubtask(false);
       toast.success("Subtask created successfully");
     } catch (error) {
@@ -120,7 +138,8 @@ const SubtaskPage = ({ user }) => {
       const updatedSubtask = await response.json();
       setSubtasks(subtasks.map((s) => (s.subtask_id === subtaskId ? updatedSubtask : s)));
       setEditingSubtask(null);
-      setEditValue("");
+      setEditForm({});
+      toast.success("Subtask updated");
     } catch (error) {
       console.error("Error updating subtask:", error);
       toast.error("Failed to update subtask");
@@ -130,6 +149,28 @@ const SubtaskPage = ({ user }) => {
   // Toggle subtask completion
   const handleToggleComplete = async (subtask) => {
     await handleUpdateSubtask(subtask.subtask_id, { completed: !subtask.completed });
+  };
+
+  // Save notes
+  const handleSaveNotes = async (subtaskId, notes) => {
+    try {
+      const response = await fetch(`${API}/subtasks/${subtaskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ notes }),
+      });
+
+      if (!response.ok) throw new Error("Failed to save notes");
+
+      const updatedSubtask = await response.json();
+      setSubtasks(subtasks.map((s) => (s.subtask_id === subtaskId ? updatedSubtask : s)));
+      setNotesDialog(null);
+      toast.success("Notes saved");
+    } catch (error) {
+      console.error("Error saving notes:", error);
+      toast.error("Failed to save notes");
+    }
   };
 
   // Delete subtask
@@ -151,21 +192,23 @@ const SubtaskPage = ({ user }) => {
     }
   };
 
+  // Check if overdue
+  const isOverdue = (subtask) => {
+    if (subtask.completed) return false;
+    const endDate = parseISO(subtask.end_date);
+    return isBefore(endDate, startOfDay(new Date()));
+  };
+
   // Calculate completion percentage
   const completionPercentage =
     subtasks.length > 0
       ? Math.round((subtasks.filter((s) => s.completed).length / subtasks.length) * 100)
       : 0;
 
-  // Group subtasks by date
-  const groupedSubtasks = subtasks.reduce((acc, subtask) => {
-    const date = subtask.date;
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(subtask);
-    return acc;
-  }, {});
-
-  const sortedDates = Object.keys(groupedSubtasks).sort();
+  // Group subtasks by status
+  const overdueSubtasks = subtasks.filter((s) => isOverdue(s));
+  const activeSubtasks = subtasks.filter((s) => !s.completed && !isOverdue(s));
+  const completedSubtasks = subtasks.filter((s) => s.completed);
 
   if (loading) {
     return (
@@ -185,6 +228,156 @@ const SubtaskPage = ({ user }) => {
       </div>
     );
   }
+
+  const SubtaskItem = ({ subtask, index }) => {
+    const overdue = isOverdue(subtask);
+    const isEditing = editingSubtask === subtask.subtask_id;
+
+    return (
+      <div
+        className={`p-4 border rounded-sm transition-all animate-fade-in-up ${
+          overdue
+            ? "border-destructive/50 bg-destructive/5"
+            : subtask.completed
+            ? "border-success/50 bg-success/5"
+            : "border-border bg-card"
+        } hover-lift`}
+        style={{ animationDelay: `${index * 50}ms` }}
+        data-testid={`subtask-${subtask.subtask_id}`}
+      >
+        {isEditing ? (
+          <div className="space-y-3">
+            <Input
+              value={editForm.name || ""}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              placeholder="Subtask name"
+              data-testid={`edit-subtask-name-${subtask.subtask_id}`}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Start Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal text-sm">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editForm.start_date ? format(parseISO(editForm.start_date), "MMM d, yyyy") : "Pick date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editForm.start_date ? parseISO(editForm.start_date) : undefined}
+                      onSelect={(date) => date && setEditForm({ ...editForm, start_date: format(date, "yyyy-MM-dd") })}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">End Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal text-sm">
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editForm.end_date ? format(parseISO(editForm.end_date), "MMM d, yyyy") : "Pick date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={editForm.end_date ? parseISO(editForm.end_date) : undefined}
+                      onSelect={(date) => date && setEditForm({ ...editForm, end_date: format(date, "yyyy-MM-dd") })}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => { setEditingSubtask(null); setEditForm({}); }}>
+                <X className="h-4 w-4 mr-1" /> Cancel
+              </Button>
+              <Button size="sm" onClick={() => handleUpdateSubtask(subtask.subtask_id, editForm)}>
+                <Save className="h-4 w-4 mr-1" /> Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-3">
+            <Checkbox
+              checked={subtask.completed}
+              onCheckedChange={() => handleToggleComplete(subtask)}
+              className={`h-5 w-5 mt-0.5 ${subtask.completed ? "bg-success border-success" : ""}`}
+              data-testid={`subtask-checkbox-${subtask.subtask_id}`}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className={`font-medium ${subtask.completed ? "line-through text-muted-foreground" : ""}`}
+                >
+                  {subtask.name}
+                </span>
+                <Badge
+                  variant={overdue ? "destructive" : subtask.completed ? "success" : "secondary"}
+                  className="text-[10px]"
+                >
+                  {format(parseISO(subtask.start_date), "MMM d")} - {format(parseISO(subtask.end_date), "MMM d")}
+                </Badge>
+                {overdue && <Badge variant="destructive" className="text-[10px]">OVERDUE</Badge>}
+              </div>
+              
+              {subtask.notes && (
+                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{subtask.notes}</p>
+              )}
+              
+              {subtask.completed && subtask.completed_at && (
+                <p className="text-xs text-success mt-1">
+                  ✓ Completed on {format(parseISO(subtask.completed_at), "MMM d, yyyy 'at' HH:mm")}
+                </p>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setNotesDialog(subtask)}
+                data-testid={`notes-btn-${subtask.subtask_id}`}
+              >
+                <MessageSquare className={`h-4 w-4 ${subtask.notes ? "text-accent" : "text-muted-foreground"}`} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  setEditingSubtask(subtask.subtask_id);
+                  setEditForm({
+                    name: subtask.name,
+                    start_date: subtask.start_date,
+                    end_date: subtask.end_date,
+                  });
+                }}
+                data-testid={`edit-subtask-${subtask.subtask_id}`}
+              >
+                <Edit2 className="h-4 w-4 text-muted-foreground" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 hover:text-destructive"
+                onClick={() => setDeleteConfirm(subtask)}
+                data-testid={`delete-subtask-${subtask.subtask_id}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background" data-testid="subtask-page">
@@ -233,9 +426,16 @@ const SubtaskPage = ({ user }) => {
             <span className="text-2xl font-bold text-accent">{completionPercentage}%</span>
           </div>
           <Progress value={completionPercentage} className="h-3" />
-          <p className="text-sm text-muted-foreground mt-2">
-            {subtasks.filter((s) => s.completed).length} of {subtasks.length} subtasks completed
-          </p>
+          <div className="flex gap-4 mt-3 text-sm">
+            <span className="text-muted-foreground">
+              {subtasks.filter((s) => s.completed).length} of {subtasks.length} subtasks completed
+            </span>
+            {overdueSubtasks.length > 0 && (
+              <span className="text-destructive font-medium">
+                {overdueSubtasks.length} overdue
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Action Bar */}
@@ -259,81 +459,50 @@ const SubtaskPage = ({ user }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            {sortedDates.map((date) => (
-              <div key={date} className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <CalendarIcon className="h-4 w-4" />
-                  {format(parseISO(date), "EEEE, MMMM d, yyyy")}
-                </div>
+            {/* Overdue Section */}
+            {overdueSubtasks.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-destructive mb-3 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-destructive"></span>
+                  Overdue ({overdueSubtasks.length})
+                </h3>
                 <div className="space-y-2">
-                  {groupedSubtasks[date].map((subtask, index) => (
-                    <div
-                      key={subtask.subtask_id}
-                      className={`flex items-center gap-3 p-4 border border-border rounded-sm bg-card hover-lift transition-all animate-fade-in-up ${
-                        subtask.completed ? "bg-success/5 border-success/20" : ""
-                      }`}
-                      style={{ animationDelay: `${index * 50}ms` }}
-                      data-testid={`subtask-${subtask.subtask_id}`}
-                    >
-                      <Checkbox
-                        checked={subtask.completed}
-                        onCheckedChange={() => handleToggleComplete(subtask)}
-                        className="h-5 w-5"
-                        data-testid={`subtask-checkbox-${subtask.subtask_id}`}
-                      />
-                      
-                      {editingSubtask === subtask.subtask_id ? (
-                        <Input
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onBlur={() => {
-                            if (editValue !== subtask.name && editValue.trim()) {
-                              handleUpdateSubtask(subtask.subtask_id, { name: editValue });
-                            } else {
-                              setEditingSubtask(null);
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && editValue.trim()) {
-                              handleUpdateSubtask(subtask.subtask_id, { name: editValue });
-                            } else if (e.key === "Escape") {
-                              setEditingSubtask(null);
-                            }
-                          }}
-                          className="flex-1"
-                          autoFocus
-                        />
-                      ) : (
-                        <button
-                          className={`flex-1 text-left transition-colors ${
-                            subtask.completed
-                              ? "line-through text-muted-foreground"
-                              : "hover:text-accent"
-                          }`}
-                          onClick={() => {
-                            setEditingSubtask(subtask.subtask_id);
-                            setEditValue(subtask.name);
-                          }}
-                          data-testid={`subtask-name-${subtask.subtask_id}`}
-                        >
-                          {subtask.name}
-                        </button>
-                      )}
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive flex-shrink-0"
-                        onClick={() => setDeleteConfirm(subtask)}
-                        data-testid={`delete-subtask-${subtask.subtask_id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  {overdueSubtasks.map((subtask, index) => (
+                    <SubtaskItem key={subtask.subtask_id} subtask={subtask} index={index} />
                   ))}
                 </div>
               </div>
-            ))}
+            )}
+
+            {/* Active Section */}
+            {activeSubtasks.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-accent"></span>
+                  Active ({activeSubtasks.length})
+                </h3>
+                <div className="space-y-2">
+                  {activeSubtasks.map((subtask, index) => (
+                    <SubtaskItem key={subtask.subtask_id} subtask={subtask} index={index} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Completed Section */}
+            {completedSubtasks.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-success mb-3 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-success"></span>
+                  Completed ({completedSubtasks.length})
+                </h3>
+                <div className="space-y-2">
+                  {completedSubtasks.map((subtask, index) => (
+                    <SubtaskItem key={subtask.subtask_id} subtask={subtask} index={index} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -344,7 +513,7 @@ const SubtaskPage = ({ user }) => {
           <DialogHeader>
             <DialogTitle className="font-['Manrope']">Add New Subtask</DialogTitle>
             <DialogDescription>
-              Break down "{task.name}" into smaller subtasks.
+              Break down "{task.name}" into smaller subtasks with date ranges.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -357,34 +526,75 @@ const SubtaskPage = ({ user }) => {
                 data-testid="new-subtask-name-input"
               />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Start Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                      data-testid="new-subtask-start-date"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newSubtask.start_date
+                        ? format(parseISO(newSubtask.start_date), "PPP")
+                        : "Pick start date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={newSubtask.start_date ? parseISO(newSubtask.start_date) : undefined}
+                      onSelect={(date) => {
+                        if (date) {
+                          setNewSubtask({ ...newSubtask, start_date: format(date, "yyyy-MM-dd") });
+                        }
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">End Date</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                      data-testid="new-subtask-end-date"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {newSubtask.end_date
+                        ? format(parseISO(newSubtask.end_date), "PPP")
+                        : "Pick end date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={newSubtask.end_date ? parseISO(newSubtask.end_date) : undefined}
+                      onSelect={(date) => {
+                        if (date) {
+                          setNewSubtask({ ...newSubtask, end_date: format(date, "yyyy-MM-dd") });
+                        }
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Date</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal"
-                    data-testid="new-subtask-date-picker"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {newSubtask.date
-                      ? format(parseISO(newSubtask.date), "PPP")
-                      : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={newSubtask.date ? parseISO(newSubtask.date) : undefined}
-                    onSelect={(date) => {
-                      if (date) {
-                        setNewSubtask({ ...newSubtask, date: format(date, "yyyy-MM-dd") });
-                      }
-                    }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <label className="text-sm font-medium">Notes (optional)</label>
+              <Textarea
+                placeholder="Add any notes about this subtask..."
+                value={newSubtask.notes}
+                onChange={(e) => setNewSubtask({ ...newSubtask, notes: e.target.value })}
+                rows={3}
+                data-testid="new-subtask-notes"
+              />
             </div>
           </div>
           <DialogFooter>
@@ -393,6 +603,46 @@ const SubtaskPage = ({ user }) => {
             </Button>
             <Button onClick={handleAddSubtask} data-testid="create-subtask-btn">
               Create Subtask
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notes Dialog */}
+      <Dialog open={!!notesDialog} onOpenChange={() => setNotesDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-['Manrope']">Completion Notes</DialogTitle>
+            <DialogDescription>
+              Add notes about "{notesDialog?.name}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder="Enter notes about completion, blockers, or progress..."
+              defaultValue={notesDialog?.notes || ""}
+              onChange={(e) => {
+                if (notesDialog) {
+                  setNotesDialog({ ...notesDialog, notes: e.target.value });
+                }
+              }}
+              rows={5}
+              data-testid="subtask-notes-input"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotesDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (notesDialog) {
+                  handleSaveNotes(notesDialog.subtask_id, notesDialog.notes || "");
+                }
+              }}
+              data-testid="save-subtask-notes-btn"
+            >
+              Save Notes
             </Button>
           </DialogFooter>
         </DialogContent>

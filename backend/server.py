@@ -46,14 +46,11 @@ class User(BaseModel):
 class TaskCreate(BaseModel):
     name: str
     reminder_time: str  # HH:MM format
-    start_date: Optional[str] = None  # YYYY-MM-DD
-    end_date: Optional[str] = None  # YYYY-MM-DD
 
 class TaskUpdate(BaseModel):
     name: Optional[str] = None
     reminder_time: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    is_deleted: Optional[bool] = None
 
 class Task(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -61,19 +58,24 @@ class Task(BaseModel):
     user_id: str
     name: str
     reminder_time: str
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    daily_progress: Dict[str, str] = {}  # {"2025-01-01": "Chapter 1", ...}
+    daily_progress: Dict[str, Dict[str, Any]] = {}  # {"2025-01-01": {"completed": true, "completed_at": "...", "notes": "..."}}
+    is_deleted: bool = False
+    deleted_at: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class SubtaskCreate(BaseModel):
     name: str
-    date: str  # YYYY-MM-DD
-    completed: bool = False
+    start_date: str  # YYYY-MM-DD
+    end_date: str  # YYYY-MM-DD
+    notes: Optional[str] = ""
 
 class SubtaskUpdate(BaseModel):
     name: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     completed: Optional[bool] = None
+    completed_at: Optional[str] = None
+    notes: Optional[str] = None
 
 class Subtask(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -81,13 +83,17 @@ class Subtask(BaseModel):
     task_id: str
     user_id: str
     name: str
-    date: str
+    start_date: str
+    end_date: str
     completed: bool = False
+    completed_at: Optional[str] = None
+    notes: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class DailyProgressUpdate(BaseModel):
     date: str  # YYYY-MM-DD
-    value: str  # e.g., "Chapter 1" or empty string
+    completed: bool
+    notes: Optional[str] = ""
 
 # ============== Auth Helpers ==============
 
@@ -257,9 +263,9 @@ async def create_task(task_data: TaskCreate, user: User = Depends(get_current_us
         "user_id": user.user_id,
         "name": task_data.name,
         "reminder_time": task_data.reminder_time,
-        "start_date": task_data.start_date,
-        "end_date": task_data.end_date,
         "daily_progress": {},
+        "is_deleted": False,
+        "deleted_at": None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -270,12 +276,36 @@ async def create_task(task_data: TaskCreate, user: User = Depends(get_current_us
     return return_doc
 
 @api_router.get("/tasks")
-async def get_tasks(user: User = Depends(get_current_user)):
+async def get_tasks(include_deleted: bool = False, user: User = Depends(get_current_user)):
     """Get all tasks for current user"""
+    query = {"user_id": user.user_id}
+    if not include_deleted:
+        query["is_deleted"] = {"$ne": True}
+    
     tasks = await db.tasks.find(
-        {"user_id": user.user_id},
+        query,
         {"_id": 0}
     ).sort("created_at", 1).to_list(1000)
+    
+    # For each task, get subtasks count and completion info
+    for task in tasks:
+        subtasks = await db.subtasks.find(
+            {"task_id": task["task_id"], "user_id": user.user_id},
+            {"_id": 0}
+        ).to_list(1000)
+        task["subtasks"] = subtasks
+        task["subtask_count"] = len(subtasks)
+        task["completed_subtasks"] = len([s for s in subtasks if s.get("completed")])
+    
+    return tasks
+
+@api_router.get("/tasks/bin")
+async def get_deleted_tasks(user: User = Depends(get_current_user)):
+    """Get all deleted tasks (bin)"""
+    tasks = await db.tasks.find(
+        {"user_id": user.user_id, "is_deleted": True},
+        {"_id": 0}
+    ).sort("deleted_at", -1).to_list(1000)
     
     return tasks
 
@@ -289,6 +319,13 @@ async def get_task(task_id: str, user: User = Depends(get_current_user)):
     
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Get subtasks
+    subtasks = await db.subtasks.find(
+        {"task_id": task_id, "user_id": user.user_id},
+        {"_id": 0}
+    ).to_list(1000)
+    task["subtasks"] = subtasks
     
     return task
 
@@ -312,8 +349,34 @@ async def update_task(task_id: str, task_data: TaskUpdate, user: User = Depends(
     return updated_task
 
 @api_router.delete("/tasks/{task_id}")
-async def delete_task(task_id: str, user: User = Depends(get_current_user)):
-    """Delete a task and its subtasks"""
+async def soft_delete_task(task_id: str, user: User = Depends(get_current_user)):
+    """Soft delete a task (move to bin)"""
+    result = await db.tasks.update_one(
+        {"task_id": task_id, "user_id": user.user_id},
+        {"$set": {"is_deleted": True, "deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return {"message": "Task moved to bin"}
+
+@api_router.post("/tasks/{task_id}/restore")
+async def restore_task(task_id: str, user: User = Depends(get_current_user)):
+    """Restore a task from bin"""
+    result = await db.tasks.update_one(
+        {"task_id": task_id, "user_id": user.user_id, "is_deleted": True},
+        {"$set": {"is_deleted": False, "deleted_at": None}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Task not found in bin")
+    
+    return {"message": "Task restored successfully"}
+
+@api_router.delete("/tasks/{task_id}/permanent")
+async def permanent_delete_task(task_id: str, user: User = Depends(get_current_user)):
+    """Permanently delete a task and its subtasks"""
     result = await db.tasks.delete_one({"task_id": task_id, "user_id": user.user_id})
     
     if result.deleted_count == 0:
@@ -322,7 +385,7 @@ async def delete_task(task_id: str, user: User = Depends(get_current_user)):
     # Also delete all subtasks for this task
     await db.subtasks.delete_many({"task_id": task_id})
     
-    return {"message": "Task deleted successfully"}
+    return {"message": "Task permanently deleted"}
 
 @api_router.put("/tasks/{task_id}/progress")
 async def update_daily_progress(
@@ -340,10 +403,19 @@ async def update_daily_progress(
         raise HTTPException(status_code=404, detail="Task not found")
     
     daily_progress = task.get("daily_progress", {})
-    if progress.value:
-        daily_progress[progress.date] = progress.value
+    
+    if progress.completed:
+        daily_progress[progress.date] = {
+            "completed": True,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "notes": progress.notes or ""
+        }
     else:
-        daily_progress.pop(progress.date, None)
+        daily_progress[progress.date] = {
+            "completed": False,
+            "completed_at": None,
+            "notes": progress.notes or ""
+        }
     
     await db.tasks.update_one(
         {"task_id": task_id},
@@ -355,7 +427,7 @@ async def update_daily_progress(
 
 # ============== Subtask Endpoints ==============
 
-@api_router.post("/tasks/{task_id}/subtasks")
+@api_router.post("/tasks/{task_id}/subtasks", status_code=201)
 async def create_subtask(task_id: str, subtask_data: SubtaskCreate, user: User = Depends(get_current_user)):
     """Create a subtask for a task"""
     # Verify task exists and belongs to user
@@ -374,8 +446,11 @@ async def create_subtask(task_id: str, subtask_data: SubtaskCreate, user: User =
         "task_id": task_id,
         "user_id": user.user_id,
         "name": subtask_data.name,
-        "date": subtask_data.date,
-        "completed": subtask_data.completed,
+        "start_date": subtask_data.start_date,
+        "end_date": subtask_data.end_date,
+        "completed": False,
+        "completed_at": None,
+        "notes": subtask_data.notes or "",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -399,14 +474,24 @@ async def get_subtasks(task_id: str, user: User = Depends(get_current_user)):
     subtasks = await db.subtasks.find(
         {"task_id": task_id, "user_id": user.user_id},
         {"_id": 0}
-    ).sort("date", 1).to_list(1000)
+    ).sort("start_date", 1).to_list(1000)
     
     return subtasks
 
 @api_router.put("/subtasks/{subtask_id}")
 async def update_subtask(subtask_id: str, subtask_data: SubtaskUpdate, user: User = Depends(get_current_user)):
     """Update a subtask"""
-    update_dict = {k: v for k, v in subtask_data.model_dump().items() if v is not None}
+    update_dict = {}
+    
+    for k, v in subtask_data.model_dump().items():
+        if v is not None:
+            update_dict[k] = v
+    
+    # If completing, set completed_at
+    if subtask_data.completed is True:
+        update_dict["completed_at"] = datetime.now(timezone.utc).isoformat()
+    elif subtask_data.completed is False:
+        update_dict["completed_at"] = None
     
     if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
