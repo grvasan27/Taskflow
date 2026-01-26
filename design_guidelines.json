@@ -1,0 +1,143 @@
+{
+  "design_system": {
+    "identity": {
+      "name": "TaskFlow",
+      "archetype": "Swiss & High-Contrast",
+      "tone": "Functional, Precise, Kinetic",
+      "principles": [
+        "Density is Clarity: Use tight grids but distinct borders.",
+        "Action over Decoration: Color is for status only.",
+        "The 'Living' Grid: Rows should feel tactile, not static."
+      ]
+    },
+    "typography": {
+      "font_family": {
+        "headings": "Manrope, sans-serif",
+        "body": "IBM Plex Sans, sans-serif",
+        "mono": "JetBrains Mono, monospace"
+      },
+      "scale": {
+        "h1": "text-4xl md:text-6xl font-bold tracking-tighter",
+        "h2": "text-3xl md:text-4xl font-semibold tracking-tight",
+        "h3": "text-2xl font-medium tracking-tight",
+        "body_lg": "text-lg leading-relaxed",
+        "body_base": "text-base leading-normal",
+        "caption": "text-xs font-mono uppercase tracking-wider text-muted-foreground"
+      }
+    },
+    "colors": {
+      "palette": {
+        "primary": {
+          "light": "#0F172A",
+          "dark": "#F8FAFC",
+          "description": "Deep Slate for Light Mode, Off-White for Dark Mode"
+        },
+        "background": {
+          "light": "#FFFFFF",
+          "dark": "#020617",
+          "description": "Pure White vs Deepest Navy/Black"
+        },
+        "accent": {
+          "active": "#007AFF",
+          "success": "#22C55E",
+          "warning": "#F59E0B",
+          "error": "#EF4444",
+          "description": "Functional colors only. No decorative gradients."
+        },
+        "surface": {
+          "light": "#F1F5F9",
+          "dark": "#1E293B",
+          "description": "Subtle contrast for rows/cards"
+        }
+      },
+      "rules": [
+        "Never use full-screen gradients.",
+        "Use 1px borders to define grid cells.",
+        "Text must meet APCA contrast standards."
+      ]
+    },
+    "layout": {
+      "spacing": {
+        "container_padding": "p-4 md:p-8 lg:p-12",
+        "grid_gap": "gap-4",
+        "section_spacing": "py-16 md:py-24"
+      },
+      "grid_system": {
+        "dashboard": "grid grid-cols-12 gap-4 h-full",
+        "landing": "grid grid-cols-1 md:grid-cols-12 gap-8"
+      },
+      "border_radius": {
+        "default": "rounded-none",
+        "buttons": "rounded-md",
+        "cards": "rounded-sm"
+      }
+    },
+    "components": {
+      "buttons": {
+        "primary": "bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 rounded-md font-medium transition-all active:scale-95",
+        "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80 h-10 px-6 rounded-md font-medium",
+        "ghost": "hover:bg-accent hover:text-accent-foreground h-10 px-4 rounded-md"
+      },
+      "cards": {
+        "style": "border border-border bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow rounded-sm",
+        "padding": "p-6"
+      },
+      "inputs": {
+        "style": "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      }
+    },
+    "motion": {
+      "library": "framer-motion",
+      "defaults": {
+        "duration": 0.2,
+        "ease": "easeOut"
+      },
+      "interactions": [
+        "Hover: slight lift (-2px) or background highlight",
+        "Click: scale down (0.98)",
+        "Page Load: Staggered fade-in for grid rows"
+      ]
+    },
+    "assets": {
+      "icons": "lucide-react",
+      "images": {
+        "landing_hero": {
+          "url": "https://images.unsplash.com/photo-1581087659125-322b6be59e99?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwyfHxtaW5pbWFsaXN0JTIwYWJzdHJhY3QlMjBvcmdhbml6ZWQlMjBnZW9tZXRyaWMlMjBzaGFwZXN8ZW58MHx8fHwxNzY5Mzg2OTMwfDA&ixlib=rb-4.1.0&q=85",
+          "alt": "Abstract geometric structure representing organized tasks",
+          "category": "hero"
+        },
+        "login_bg": {
+          "url": "https://images.unsplash.com/photo-1712698137596-15ea82027b55?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxwcm9kdWN0aXZlJTIwd29ya3NwYWNlJTIwZGVzayUyMHNldHVwJTIwdG9wJTIwdmlld3xlbnwwfHx8fDE3NjkzODY5MzF8MA&ixlib=rb-4.1.0&q=85",
+          "alt": "Productive workspace top view",
+          "category": "auth"
+        }
+      }
+    }
+  },
+  "implementation_guide": {
+    "pages": {
+      "landing": {
+        "structure": "Hero section with 'Tetris' grid layout. Left: Value prop (H1 + CTA). Right: Abstract visual or 3D element. Features section below with 'Bento' grid.",
+        "components": ["Hero", "FeatureGrid", "Footer"]
+      },
+      "dashboard": {
+        "structure": "Full-width container. Header (Logo, Date Range, User Profile). Main Content: Data Grid.",
+        "grid_layout": "Left Col (30%): Task List. Right Col (70%): Scrollable Day Columns + Progress.",
+        "features": ["Sortable Columns", "Inline Edit", "Progress Bar", "Day Checkboxes"]
+      },
+      "subtask_view": {
+        "structure": "Clean, focused list view. Header with 'Back to Dashboard' (even though it's a new tab, navigation is key).",
+        "components": ["SubtaskList", "ProgressBar"]
+      }
+    },
+    "universal_rules": [
+      "Use 'sonner' for all toast notifications.",
+      "Ensure Dark Mode is manually tested for contrast.",
+      "No 'Inter' font for headings. Use 'Manrope'.",
+      "All interactive elements must have 'data-testid'.",
+      "Use 'lucide-react' for icons.",
+      "Do not use gradients for text.",
+      "Dashboard grid must be dense but legible (min-height 48px per row)."
+    ]
+  }
+}
