@@ -247,7 +247,7 @@ async def logout(request: Request, response: Response):
 
 # ============== Task Endpoints ==============
 
-@api_router.post("/tasks", response_model=dict)
+@api_router.post("/tasks", response_model=dict, status_code=201)
 async def create_task(task_data: TaskCreate, user: User = Depends(get_current_user)):
     """Create a new task"""
     task_id = f"task_{uuid.uuid4().hex[:12]}"
