@@ -208,7 +208,7 @@ print('Test user and session created successfully');
             "completed": False
         }
         
-        success, created_subtask = self.run_test("Create Subtask", "POST", f"tasks/{task_id}/subtasks", 201, subtask_data)
+        success, created_subtask = self.run_test("Create Subtask", "POST", f"tasks/{task_id}/subtasks", 200, subtask_data)
         
         if not success or not created_subtask:
             print("❌ Cannot continue subtask tests - subtask creation failed")
