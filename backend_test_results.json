@@ -1,0 +1,77 @@
+{
+  "timestamp": "2026-01-26T00:29:32.733999",
+  "total_tests": 7,
+  "passed_tests": 6,
+  "success_rate": "85.7%",
+  "test_details": [
+    {
+      "test": "API Root",
+      "success": true,
+      "details": "Status: 200",
+      "response_data": {
+        "message": "TaskFlow API",
+        "status": "healthy"
+      }
+    },
+    {
+      "test": "Health Check",
+      "success": true,
+      "details": "Status: 200",
+      "response_data": {
+        "status": "healthy",
+        "timestamp": "2026-01-26T00:29:30.745866+00:00"
+      }
+    },
+    {
+      "test": "Auth Me (No Token)",
+      "success": true,
+      "details": "Status: 401",
+      "response_data": {
+        "detail": "Not authenticated"
+      }
+    },
+    {
+      "test": "Get Tasks (No Token)",
+      "success": true,
+      "details": "Status: 401",
+      "response_data": {
+        "detail": "Not authenticated"
+      }
+    },
+    {
+      "test": "Get Current User",
+      "success": true,
+      "details": "Status: 200",
+      "response_data": {
+        "user_id": "test-user-1769387370",
+        "email": "test.user.1769387370@example.com",
+        "name": "Test User 1769387370",
+        "picture": "https://via.placeholder.com/150",
+        "created_at": "2026-01-26T00:29:32.189000"
+      }
+    },
+    {
+      "test": "Logout",
+      "success": true,
+      "details": "Status: 200",
+      "response_data": {
+        "message": "Logged out successfully"
+      }
+    },
+    {
+      "test": "Create Task",
+      "success": false,
+      "details": "Expected 201, got 200",
+      "response_data": {
+        "task_id": "task_ae899c82344b",
+        "user_id": "test-user-1769387370",
+        "name": "Test Task 00:29:32",
+        "reminder_time": "09:00",
+        "start_date": "2025-01-01",
+        "end_date": "2025-01-31",
+        "daily_progress": {},
+        "created_at": "2026-01-26T00:29:32.354368+00:00"
+      }
+    }
+  ]
+}
