@@ -9,7 +9,6 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,42 +42,46 @@ import {
   RotateCcw,
   Archive,
   BellRing,
-  Check,
-  X,
-  MessageSquare,
-  ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  MessageSquare,
 } from "lucide-react";
-import { format, addDays, differenceInDays, parseISO, isToday, startOfDay, isBefore, isAfter } from "date-fns";
+import { format, addDays, differenceInDays, parseISO, isToday, startOfDay, isBefore, isAfter, isWithinInterval } from "date-fns";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const CELL_WIDTH = 50; // Width of each date column in pixels
 
 const Dashboard = ({ user, setUser }) => {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState({
-    from: addDays(startOfDay(new Date()), -7), // Include past 7 days
-    to: addDays(startOfDay(new Date()), 6), // 7 days ahead
-  });
+  const [startDate, setStartDate] = useState(addDays(startOfDay(new Date()), -14));
+  const [daysToShow, setDaysToShow] = useState(42); // 6 weeks
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTask, setNewTask] = useState({ name: "", reminder_time: "09:00" });
-  const [editingCell, setEditingCell] = useState(null);
-  const [cellNotes, setCellNotes] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showBin, setShowBin] = useState(false);
   const [deletedTasks, setDeletedTasks] = useState([]);
-  const [expandedTasks, setExpandedTasks] = useState({});
+  const [notesDialog, setNotesDialog] = useState(null);
+  const [notesText, setNotesText] = useState("");
+  const scrollContainerRef = useRef(null);
   const notificationIntervalRef = useRef(null);
 
-  // Generate date columns based on range
+  // Generate date columns
   const dateColumns = [];
-  if (dateRange.from && dateRange.to) {
-    const dayCount = differenceInDays(dateRange.to, dateRange.from) + 1;
-    for (let i = 0; i < dayCount; i++) {
-      dateColumns.push(addDays(dateRange.from, i));
-    }
+  for (let i = 0; i < daysToShow; i++) {
+    dateColumns.push(addDays(startDate, i));
   }
+
+  // Scroll handlers for infinite scroll
+  const scrollLeft = () => {
+    setStartDate(prev => addDays(prev, -7));
+  };
+
+  const scrollRight = () => {
+    setStartDate(prev => addDays(prev, 7));
+  };
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -191,50 +194,42 @@ const Dashboard = ({ user, setUser }) => {
     }
   };
 
-  // Update daily progress with checkbox
-  const handleToggleDayProgress = async (taskId, date, currentProgress) => {
-    const isCompleted = currentProgress?.completed || false;
-    
+  // Toggle subtask completion
+  const handleToggleSubtask = async (subtask) => {
     try {
-      const response = await fetch(`${API}/tasks/${taskId}/progress`, {
+      const response = await fetch(`${API}/subtasks/${subtask.subtask_id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ 
-          date, 
-          completed: !isCompleted,
-          notes: currentProgress?.notes || ""
-        }),
+        body: JSON.stringify({ completed: !subtask.completed }),
       });
 
-      if (!response.ok) throw new Error("Failed to update progress");
+      if (!response.ok) throw new Error("Failed to update subtask");
 
       await fetchTasks();
     } catch (error) {
-      console.error("Error updating progress:", error);
-      toast.error("Failed to update progress");
+      console.error("Error updating subtask:", error);
+      toast.error("Failed to update subtask");
     }
   };
 
-  // Save cell notes
-  const handleSaveCellNotes = async (taskId, date, completed) => {
+  // Save subtask notes
+  const handleSaveNotes = async () => {
+    if (!notesDialog) return;
+    
     try {
-      const response = await fetch(`${API}/tasks/${taskId}/progress`, {
+      const response = await fetch(`${API}/subtasks/${notesDialog.subtask_id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ 
-          date, 
-          completed,
-          notes: cellNotes
-        }),
+        body: JSON.stringify({ notes: notesText }),
       });
 
       if (!response.ok) throw new Error("Failed to save notes");
 
       await fetchTasks();
-      setEditingCell(null);
-      setCellNotes("");
+      setNotesDialog(null);
+      setNotesText("");
       toast.success("Notes saved");
     } catch (error) {
       console.error("Error saving notes:", error);
@@ -299,26 +294,6 @@ const Dashboard = ({ user, setUser }) => {
     }
   };
 
-  // Update task (name or reminder)
-  const handleUpdateTask = async (taskId, field, value) => {
-    try {
-      const response = await fetch(`${API}/tasks/${taskId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ [field]: value }),
-      });
-
-      if (!response.ok) throw new Error("Failed to update task");
-
-      await fetchTasks();
-      setEditingCell(null);
-    } catch (error) {
-      console.error("Error updating task:", error);
-      toast.error("Failed to update task");
-    }
-  };
-
   // Calculate progress percentage based on subtasks
   const calculateProgress = (task) => {
     const subtasks = task.subtasks || [];
@@ -327,12 +302,53 @@ const Dashboard = ({ user, setUser }) => {
     return Math.round((completedCount / subtasks.length) * 100);
   };
 
-  // Toggle expanded task
-  const toggleExpanded = (taskId) => {
-    setExpandedTasks(prev => ({
-      ...prev,
-      [taskId]: !prev[taskId]
-    }));
+  // Check if date is within subtask range
+  const isDateInRange = (date, subtask) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    return dateStr >= subtask.start_date && dateStr <= subtask.end_date;
+  };
+
+  // Get bar position info for Gantt
+  const getBarInfo = (subtask, dateColumns) => {
+    const startDateObj = parseISO(subtask.start_date);
+    const endDateObj = parseISO(subtask.end_date);
+    
+    let startIndex = -1;
+    let endIndex = -1;
+    
+    dateColumns.forEach((date, index) => {
+      const dateStr = format(date, "yyyy-MM-dd");
+      if (dateStr === subtask.start_date) startIndex = index;
+      if (dateStr === subtask.end_date) endIndex = index;
+    });
+    
+    // Check if bar is partially visible
+    if (startIndex === -1 && endIndex === -1) {
+      // Check if the range spans across visible dates
+      const firstDate = dateColumns[0];
+      const lastDate = dateColumns[dateColumns.length - 1];
+      
+      if (isBefore(startDateObj, firstDate) && isAfter(endDateObj, lastDate)) {
+        return { startIndex: 0, endIndex: dateColumns.length - 1, partial: 'both' };
+      }
+      return null;
+    }
+    
+    if (startIndex === -1) {
+      startIndex = 0;
+    }
+    if (endIndex === -1) {
+      endIndex = dateColumns.length - 1;
+    }
+    
+    return { startIndex, endIndex, partial: null };
+  };
+
+  // Check if overdue
+  const isOverdue = (subtask) => {
+    if (subtask.completed) return false;
+    const endDate = parseISO(subtask.end_date);
+    return isBefore(endDate, startOfDay(new Date()));
   };
 
   // Logout
@@ -353,11 +369,9 @@ const Dashboard = ({ user, setUser }) => {
     window.open(`/task/${taskId}`, "_blank");
   };
 
-  // Check if date is overdue for a subtask
-  const isOverdue = (subtask) => {
-    if (subtask.completed) return false;
-    const endDate = parseISO(subtask.end_date);
-    return isBefore(endDate, startOfDay(new Date()));
+  // Go to today
+  const goToToday = () => {
+    setStartDate(addDays(startOfDay(new Date()), -14));
   };
 
   if (loading) {
@@ -372,7 +386,7 @@ const Dashboard = ({ user, setUser }) => {
     <TooltipProvider>
       <div className="dashboard-container min-h-screen bg-background" data-testid="dashboard">
         {/* Header */}
-        <header className="border-b border-border bg-card sticky top-0 z-10">
+        <header className="border-b border-border bg-card sticky top-0 z-20">
           <div className="container mx-auto px-4 md:px-8 py-4">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -381,40 +395,41 @@ const Dashboard = ({ user, setUser }) => {
               </div>
 
               <div className="flex items-center gap-3">
-                {/* Date Range Picker */}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="hidden sm:flex items-center gap-2"
-                      data-testid="date-range-picker"
-                    >
-                      <CalendarIcon className="h-4 w-4" />
-                      <span className="text-sm">
-                        {dateRange.from && dateRange.to
-                          ? `${format(dateRange.from, "MMM d")} - ${format(dateRange.to, "MMM d")}`
-                          : "Select dates"}
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="end">
-                    <Calendar
-                      mode="range"
-                      selected={dateRange}
-                      onSelect={(range) => {
-                        if (range?.from) {
-                          setDateRange({
-                            from: range.from,
-                            to: range.to || addDays(range.from, 6),
-                          });
-                        }
-                      }}
-                      numberOfMonths={2}
-                      initialFocus
-                      disabled={false}
-                    />
-                  </PopoverContent>
-                </Popover>
+                {/* Navigation Controls */}
+                <div className="flex items-center gap-1 bg-muted rounded-md p-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={scrollLeft}
+                    data-testid="scroll-left-btn"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={goToToday}
+                    data-testid="today-btn"
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={scrollRight}
+                    data-testid="scroll-right-btn"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Date Range Display */}
+                <div className="hidden sm:block text-sm text-muted-foreground">
+                  {format(startDate, "MMM d")} - {format(addDays(startDate, daysToShow - 1), "MMM d, yyyy")}
+                </div>
 
                 {/* Bin Button */}
                 <Button
@@ -464,9 +479,9 @@ const Dashboard = ({ user, setUser }) => {
           {/* Action Bar */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-semibold font-['Manrope']">My Tasks</h2>
+              <h2 className="text-2xl font-semibold font-['Manrope']">Gantt View</h2>
               <p className="text-sm text-muted-foreground">
-                {tasks.length} task{tasks.length !== 1 ? "s" : ""} • {dateColumns.length} days
+                {tasks.length} task{tasks.length !== 1 ? "s" : ""} • Click subtask bar to toggle completion
               </p>
             </div>
             <Button
@@ -479,267 +494,226 @@ const Dashboard = ({ user, setUser }) => {
             </Button>
           </div>
 
-          {/* Task Grid */}
+          {/* Gantt Chart */}
           <div className="border border-border rounded-sm bg-card overflow-hidden">
-            <ScrollArea className="w-full">
-              <div className="min-w-max">
-                {/* Header Row */}
-                <div className="flex border-b border-border bg-muted/50 sticky top-0 z-10">
-                  <div className="w-8 px-2 py-3 border-r border-border"></div>
-                  <div className="task-name-col min-w-[200px] w-[200px] px-4 py-3 font-medium text-sm border-r border-border">
-                    Task
+            <div className="flex">
+              {/* Fixed Left Panel */}
+              <div className="flex-shrink-0 border-r border-border bg-card z-10">
+                {/* Header */}
+                <div className="flex border-b border-border bg-muted/50 h-12">
+                  <div className="w-[200px] px-4 py-3 font-medium text-sm flex items-center">Task / Subtask</div>
+                  <div className="w-[70px] px-2 py-3 font-medium text-sm flex items-center justify-center">
+                    <Bell className="h-3.5 w-3.5 mr-1" />
+                    Time
                   </div>
-                  <div className="reminder-col min-w-[90px] w-[90px] px-3 py-3 font-medium text-sm border-r border-border flex items-center gap-1">
-                    <Bell className="h-3.5 w-3.5" />
-                    Reminder
-                  </div>
-                  <div className="progress-col min-w-[100px] w-[100px] px-3 py-3 font-medium text-sm text-center border-r border-border">
-                    Progress
-                  </div>
-                  {dateColumns.map((date, index) => (
-                    <div
-                      key={index}
-                      className={`date-col min-w-[90px] w-[90px] px-2 py-3 font-medium text-center border-r border-border date-header ${
-                        isToday(date) ? "bg-accent/10 text-accent" : ""
-                      }`}
-                    >
-                      <div className="text-[10px] text-muted-foreground">
-                        {format(date, "EEE")}
-                      </div>
-                      <div className={isToday(date) ? "font-bold" : ""}>
-                        {format(date, "d MMM")}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="actions-col min-w-[60px] w-[60px] px-2 py-3 font-medium text-sm text-center">
-                    
-                  </div>
+                  <div className="w-[80px] px-2 py-3 font-medium text-sm flex items-center justify-center">Progress</div>
                 </div>
 
                 {/* Task Rows */}
                 {tasks.length === 0 ? (
-                  <div className="flex items-center justify-center py-16 text-muted-foreground">
-                    <div className="text-center">
-                      <CheckCircle2 className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p>No tasks yet. Click "Add Task" to get started!</p>
+                  <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                    <div className="text-center px-4">
+                      <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                      <p className="text-sm">No tasks yet</p>
                     </div>
                   </div>
                 ) : (
-                  tasks.map((task, rowIndex) => {
+                  tasks.map((task) => {
                     const progress = calculateProgress(task);
-                    const isExpanded = expandedTasks[task.task_id];
                     const subtasks = task.subtasks || [];
                     
                     return (
                       <div key={task.task_id}>
-                        {/* Main Task Row */}
-                        <div
-                          className="flex border-b border-border last:border-b-0 task-row animate-fade-in-up"
-                          style={{ animationDelay: `${rowIndex * 50}ms` }}
-                          data-testid={`task-row-${task.task_id}`}
-                        >
-                          {/* Expand Toggle */}
-                          <div className="w-8 px-2 py-3 border-r border-border flex items-center justify-center">
-                            {subtasks.length > 0 && (
-                              <button
-                                onClick={() => toggleExpanded(task.task_id)}
-                                className="p-1 hover:bg-muted rounded"
-                                data-testid={`expand-task-${task.task_id}`}
-                              >
-                                {isExpanded ? (
-                                  <ChevronDown className="h-4 w-4" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4" />
-                                )}
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Task Name */}
+                        {/* Task Row */}
+                        <div className="flex border-b border-border h-12 bg-muted/30" data-testid={`task-row-${task.task_id}`}>
                           <div
-                            className="task-name-col min-w-[200px] w-[200px] px-4 py-3 border-r border-border flex flex-col gap-1 editable-cell cursor-pointer group"
+                            className="w-[200px] px-4 py-2 flex items-center gap-2 cursor-pointer hover:bg-muted/50 transition-colors"
                             onClick={() => openSubtaskPage(task.task_id)}
-                            data-testid={`task-name-${task.task_id}`}
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="truncate font-medium">{task.name}</span>
-                              <ExternalLink className="h-3.5 w-3.5 opacity-0 group-hover:opacity-50 transition-opacity flex-shrink-0" />
-                            </div>
-                            {subtasks.length > 0 && (
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <span>{task.completed_subtasks || 0}/{task.subtask_count || 0} subtasks</span>
-                              </div>
-                            )}
+                            <span className="font-medium truncate text-sm">{task.name}</span>
+                            <ExternalLink className="h-3 w-3 opacity-40 flex-shrink-0" />
                           </div>
-
-                          {/* Reminder Time */}
-                          <div className="reminder-col min-w-[90px] w-[90px] px-3 py-3 border-r border-border flex items-center">
-                            {editingCell === `${task.task_id}-reminder` ? (
-                              <Input
-                                type="time"
-                                value={editingCell === `${task.task_id}-reminder` ? cellNotes : task.reminder_time}
-                                onChange={(e) => setCellNotes(e.target.value)}
-                                onBlur={() => {
-                                  if (cellNotes !== task.reminder_time) {
-                                    handleUpdateTask(task.task_id, "reminder_time", cellNotes);
-                                  } else {
-                                    setEditingCell(null);
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    handleUpdateTask(task.task_id, "reminder_time", cellNotes);
-                                  } else if (e.key === "Escape") {
-                                    setEditingCell(null);
-                                  }
-                                }}
-                                className="h-7 text-xs"
-                                autoFocus
-                              />
-                            ) : (
-                              <button
-                                className="reminder-badge px-2 py-1 bg-muted rounded text-muted-foreground hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-1 text-xs"
-                                onClick={() => {
-                                  setEditingCell(`${task.task_id}-reminder`);
-                                  setCellNotes(task.reminder_time);
-                                }}
-                                data-testid={`reminder-${task.task_id}`}
-                              >
-                                <BellRing className="h-3 w-3" />
-                                {task.reminder_time}
-                              </button>
-                            )}
+                          <div className="w-[70px] px-2 py-2 flex items-center justify-center">
+                            <span className="text-xs bg-muted px-2 py-0.5 rounded font-mono">{task.reminder_time}</span>
                           </div>
-
-                          {/* Progress (now adjacent to reminder) */}
-                          <div className="progress-col min-w-[100px] w-[100px] px-3 py-3 border-r border-border flex flex-col items-center justify-center gap-1">
-                            <span className="progress-cell font-medium text-accent text-sm">
-                              {progress}%
-                            </span>
-                            <Progress value={progress} className="h-1.5 w-full" />
-                            <span className="text-[10px] text-muted-foreground">
-                              {task.completed_subtasks || 0}/{task.subtask_count || 0}
-                            </span>
-                          </div>
-
-                          {/* Date Columns with Checkboxes */}
-                          {dateColumns.map((date) => {
-                            const dateStr = format(date, "yyyy-MM-dd");
-                            const cellProgress = task.daily_progress?.[dateStr] || {};
-                            const isCompleted = cellProgress.completed || false;
-                            const hasNotes = cellProgress.notes && cellProgress.notes.trim();
-                            const cellKey = `${task.task_id}-${dateStr}`;
-
-                            return (
-                              <div
-                                key={dateStr}
-                                className={`date-col min-w-[90px] w-[90px] px-2 py-2 border-r border-border flex flex-col items-center justify-center gap-1 ${
-                                  isToday(date) ? "bg-accent/5" : ""
-                                }`}
-                              >
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="flex items-center gap-1">
-                                      <Checkbox
-                                        checked={isCompleted}
-                                        onCheckedChange={() => handleToggleDayProgress(task.task_id, dateStr, cellProgress)}
-                                        className={`h-5 w-5 ${isCompleted ? "bg-success border-success" : ""}`}
-                                        data-testid={`checkbox-${task.task_id}-${dateStr}`}
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          setEditingCell(cellKey);
-                                          setCellNotes(cellProgress.notes || "");
-                                        }}
-                                        className={`p-1 rounded hover:bg-muted ${hasNotes ? "text-accent" : "text-muted-foreground/30"}`}
-                                        data-testid={`notes-btn-${task.task_id}-${dateStr}`}
-                                      >
-                                        <MessageSquare className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </TooltipTrigger>
-                                  {(isCompleted || hasNotes) && (
-                                    <TooltipContent>
-                                      <div className="text-xs">
-                                        {isCompleted && cellProgress.completed_at && (
-                                          <p>Completed: {format(parseISO(cellProgress.completed_at), "MMM d, HH:mm")}</p>
-                                        )}
-                                        {hasNotes && <p className="mt-1">{cellProgress.notes}</p>}
-                                      </div>
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </div>
-                            );
-                          })}
-
-                          {/* Actions */}
-                          <div className="actions-col min-w-[60px] w-[60px] px-2 py-3 flex items-center justify-center">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeleteConfirm(task)}
-                              data-testid={`delete-task-${task.task_id}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <div className="w-[80px] px-2 py-2 flex flex-col items-center justify-center gap-0.5">
+                            <span className="text-xs font-medium text-accent">{progress}%</span>
+                            <Progress value={progress} className="h-1 w-full" />
                           </div>
                         </div>
 
-                        {/* Expanded Subtasks */}
-                        {isExpanded && subtasks.length > 0 && (
-                          <div className="bg-muted/30 border-b border-border">
-                            {subtasks.map((subtask, sIndex) => {
-                              const overdue = isOverdue(subtask);
-                              return (
-                                <div
-                                  key={subtask.subtask_id}
-                                  className={`flex items-center px-4 py-2 border-b border-border/50 last:border-b-0 ml-8 ${
-                                    overdue ? "bg-destructive/5" : subtask.completed ? "bg-success/5" : ""
-                                  }`}
-                                  data-testid={`subtask-inline-${subtask.subtask_id}`}
+                        {/* Subtask Rows */}
+                        {subtasks.map((subtask) => {
+                          const overdue = isOverdue(subtask);
+                          return (
+                            <div
+                              key={subtask.subtask_id}
+                              className="flex border-b border-border/50 h-10"
+                              data-testid={`subtask-row-${subtask.subtask_id}`}
+                            >
+                              <div className="w-[200px] px-4 py-2 flex items-center gap-2 pl-8">
+                                <Checkbox
+                                  checked={subtask.completed}
+                                  onCheckedChange={() => handleToggleSubtask(subtask)}
+                                  className={`h-4 w-4 flex-shrink-0 ${subtask.completed ? "bg-success border-success" : ""}`}
+                                  data-testid={`subtask-checkbox-${subtask.subtask_id}`}
+                                />
+                                <span className={`text-sm truncate ${subtask.completed ? "line-through text-muted-foreground" : ""} ${overdue ? "text-destructive" : ""}`}>
+                                  {subtask.name}
+                                </span>
+                                {subtask.notes && (
+                                  <MessageSquare className="h-3 w-3 text-accent flex-shrink-0" />
+                                )}
+                              </div>
+                              <div className="w-[70px] px-2 py-2 flex items-center justify-center">
+                                <button
+                                  onClick={() => {
+                                    setNotesDialog(subtask);
+                                    setNotesText(subtask.notes || "");
+                                  }}
+                                  className="text-muted-foreground hover:text-accent"
+                                  data-testid={`notes-btn-${subtask.subtask_id}`}
                                 >
-                                  <div className="flex items-center gap-3 flex-1">
-                                    <Checkbox
-                                      checked={subtask.completed}
-                                      disabled
-                                      className={`h-4 w-4 ${subtask.completed ? "bg-success border-success" : ""}`}
-                                    />
-                                    <span className={`text-sm ${subtask.completed ? "line-through text-muted-foreground" : ""}`}>
-                                      {subtask.name}
-                                    </span>
-                                    <Badge variant={overdue ? "destructive" : subtask.completed ? "success" : "secondary"} className="text-[10px]">
-                                      {format(parseISO(subtask.start_date), "MMM d")} - {format(parseISO(subtask.end_date), "MMM d")}
-                                    </Badge>
-                                    {subtask.notes && (
-                                      <Tooltip>
-                                        <TooltipTrigger>
-                                          <MessageSquare className="h-3.5 w-3.5 text-accent" />
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="text-xs max-w-[200px]">{subtask.notes}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    )}
-                                  </div>
-                                  {subtask.completed && subtask.completed_at && (
-                                    <span className="text-[10px] text-muted-foreground">
-                                      Completed {format(parseISO(subtask.completed_at), "MMM d")}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                                  <MessageSquare className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <div className="w-[80px] px-2 py-2 flex items-center justify-center">
+                                <span className={`text-[10px] ${overdue ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                                  {format(parseISO(subtask.start_date), "MMM d")}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })
                 )}
               </div>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
+
+              {/* Scrollable Gantt Area */}
+              <div className="flex-1 overflow-x-auto" ref={scrollContainerRef}>
+                <div style={{ minWidth: dateColumns.length * CELL_WIDTH }}>
+                  {/* Date Headers */}
+                  <div className="flex border-b border-border bg-muted/50 h-12">
+                    {dateColumns.map((date, index) => {
+                      const isCurrentDay = isToday(date);
+                      return (
+                        <div
+                          key={index}
+                          className={`flex-shrink-0 flex flex-col items-center justify-center border-r border-border/50 ${
+                            isCurrentDay ? "bg-accent/10" : ""
+                          }`}
+                          style={{ width: CELL_WIDTH }}
+                        >
+                          <span className="text-[9px] text-muted-foreground uppercase">{format(date, "EEE")}</span>
+                          <span className={`text-xs ${isCurrentDay ? "font-bold text-accent" : ""}`}>{format(date, "d")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Task/Subtask Gantt Bars */}
+                  {tasks.map((task) => {
+                    const subtasks = task.subtasks || [];
+                    
+                    return (
+                      <div key={task.task_id}>
+                        {/* Task Row - empty cells */}
+                        <div className="flex border-b border-border h-12 bg-muted/30">
+                          {dateColumns.map((date, index) => {
+                            const isCurrentDay = isToday(date);
+                            return (
+                              <div
+                                key={index}
+                                className={`flex-shrink-0 border-r border-border/30 ${isCurrentDay ? "bg-accent/5" : ""}`}
+                                style={{ width: CELL_WIDTH }}
+                              />
+                            );
+                          })}
+                        </div>
+
+                        {/* Subtask Rows with Gantt Bars */}
+                        {subtasks.map((subtask) => {
+                          const barInfo = getBarInfo(subtask, dateColumns);
+                          const overdue = isOverdue(subtask);
+                          
+                          return (
+                            <div key={subtask.subtask_id} className="flex border-b border-border/50 h-10 relative">
+                              {dateColumns.map((date, index) => {
+                                const isCurrentDay = isToday(date);
+                                return (
+                                  <div
+                                    key={index}
+                                    className={`flex-shrink-0 border-r border-border/30 ${isCurrentDay ? "bg-accent/5" : ""}`}
+                                    style={{ width: CELL_WIDTH }}
+                                  />
+                                );
+                              })}
+                              
+                              {/* Gantt Bar */}
+                              {barInfo && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className={`absolute top-1/2 -translate-y-1/2 h-6 rounded-sm transition-all cursor-pointer hover:opacity-80 ${
+                                        subtask.completed
+                                          ? "bg-success/80"
+                                          : overdue
+                                          ? "bg-destructive/80"
+                                          : "bg-accent/70"
+                                      }`}
+                                      style={{
+                                        left: barInfo.startIndex * CELL_WIDTH + 4,
+                                        width: (barInfo.endIndex - barInfo.startIndex + 1) * CELL_WIDTH - 8,
+                                      }}
+                                      onClick={() => handleToggleSubtask(subtask)}
+                                      data-testid={`gantt-bar-${subtask.subtask_id}`}
+                                    >
+                                      <span className="text-[10px] text-white font-medium px-2 truncate block">
+                                        {subtask.name}
+                                      </span>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="text-xs">
+                                      <p className="font-medium">{subtask.name}</p>
+                                      <p className="text-muted-foreground">
+                                        {format(parseISO(subtask.start_date), "MMM d")} - {format(parseISO(subtask.end_date), "MMM d")}
+                                      </p>
+                                      <p className={subtask.completed ? "text-success" : overdue ? "text-destructive" : ""}>
+                                        {subtask.completed ? "✓ Completed" : overdue ? "⚠ Overdue" : "In Progress"}
+                                      </p>
+                                      {subtask.notes && <p className="mt-1 max-w-[200px]">{subtask.notes}</p>}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-accent/70"></div>
+              <span>In Progress</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-success/80"></div>
+              <span>Completed</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-destructive/80"></div>
+              <span>Overdue</span>
+            </div>
           </div>
         </main>
 
@@ -749,7 +723,7 @@ const Dashboard = ({ user, setUser }) => {
             <DialogHeader>
               <DialogTitle className="font-['Manrope']">Add New Task</DialogTitle>
               <DialogDescription>
-                Create a new task to track your progress.
+                Create a new task, then add subtasks with date ranges.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -789,7 +763,7 @@ const Dashboard = ({ user, setUser }) => {
             <DialogHeader>
               <DialogTitle className="font-['Manrope']">Move to Bin</DialogTitle>
               <DialogDescription>
-                Are you sure you want to move "{deleteConfirm?.name}" to bin? You can restore it later.
+                Are you sure you want to move "{deleteConfirm?.name}" to bin?
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -807,39 +781,29 @@ const Dashboard = ({ user, setUser }) => {
           </DialogContent>
         </Dialog>
 
-        {/* Cell Notes Dialog */}
-        <Dialog open={editingCell && !editingCell.includes("-reminder")} onOpenChange={() => { setEditingCell(null); setCellNotes(""); }}>
+        {/* Notes Dialog */}
+        <Dialog open={!!notesDialog} onOpenChange={() => { setNotesDialog(null); setNotesText(""); }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="font-['Manrope']">Add Notes</DialogTitle>
+              <DialogTitle className="font-['Manrope']">Subtask Notes</DialogTitle>
               <DialogDescription>
-                Add notes for this day's progress.
+                Add completion notes for "{notesDialog?.name}"
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
               <Textarea
-                placeholder="Enter notes about completion..."
-                value={cellNotes}
-                onChange={(e) => setCellNotes(e.target.value)}
-                rows={4}
-                data-testid="cell-notes-input"
+                placeholder="Enter notes about this subtask..."
+                value={notesText}
+                onChange={(e) => setNotesText(e.target.value)}
+                rows={5}
+                data-testid="subtask-notes-input"
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setEditingCell(null); setCellNotes(""); }}>
+              <Button variant="outline" onClick={() => { setNotesDialog(null); setNotesText(""); }}>
                 Cancel
               </Button>
-              <Button 
-                onClick={() => {
-                  if (editingCell) {
-                    const [taskId, dateStr] = editingCell.split(/-(.+)/);
-                    const task = tasks.find(t => t.task_id === taskId);
-                    const currentProgress = task?.daily_progress?.[dateStr] || {};
-                    handleSaveCellNotes(taskId, dateStr, currentProgress.completed || false);
-                  }
-                }}
-                data-testid="save-notes-btn"
-              >
+              <Button onClick={handleSaveNotes} data-testid="save-notes-btn">
                 Save Notes
               </Button>
             </DialogFooter>
@@ -855,7 +819,7 @@ const Dashboard = ({ user, setUser }) => {
                 Bin ({deletedTasks.length} items)
               </DialogTitle>
               <DialogDescription>
-                Deleted tasks are stored here. You can restore or permanently delete them.
+                Restore or permanently delete tasks.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 max-h-[400px] overflow-y-auto">
@@ -872,7 +836,7 @@ const Dashboard = ({ user, setUser }) => {
                       <div>
                         <p className="font-medium">{task.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Deleted {task.deleted_at ? format(parseISO(task.deleted_at), "MMM d, yyyy HH:mm") : ""}
+                          Deleted {task.deleted_at ? format(parseISO(task.deleted_at), "MMM d, yyyy") : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -891,8 +855,7 @@ const Dashboard = ({ user, setUser }) => {
                           onClick={() => handlePermanentDelete(task.task_id)}
                           data-testid={`permanent-delete-${task.task_id}`}
                         >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete Forever
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
