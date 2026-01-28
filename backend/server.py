@@ -311,6 +311,71 @@ async def get_deleted_tasks(user: User = Depends(get_current_user)):
     
     return tasks
 
+@api_router.get("/tasks/export/csv")
+async def export_tasks_csv(user: User = Depends(get_current_user)):
+    """Export all tasks and subtasks to CSV"""
+    # Get all tasks
+    tasks = await db.tasks.find(
+        {"user_id": user.user_id, "is_deleted": {"$ne": True}},
+        {"_id": 0}
+    ).sort("created_at", 1).to_list(1000)
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        "Task Name", "Reminder Time", "Task Created",
+        "Subtask Name", "Start Date", "End Date", 
+        "Completed", "Completed At", "Notes", "Progress %"
+    ])
+    
+    for task in tasks:
+        subtasks = await db.subtasks.find(
+            {"task_id": task["task_id"], "user_id": user.user_id},
+            {"_id": 0}
+        ).to_list(1000)
+        
+        # Calculate progress
+        completed_count = len([s for s in subtasks if s.get("completed")])
+        progress = round((completed_count / len(subtasks) * 100), 1) if subtasks else 0
+        
+        if subtasks:
+            for subtask in subtasks:
+                writer.writerow([
+                    task["name"],
+                    task["reminder_time"],
+                    task.get("created_at", ""),
+                    subtask["name"],
+                    subtask["start_date"],
+                    subtask["end_date"],
+                    "Yes" if subtask.get("completed") else "No",
+                    subtask.get("completed_at", ""),
+                    subtask.get("notes", ""),
+                    f"{progress}%"
+                ])
+        else:
+            # Task with no subtasks
+            writer.writerow([
+                task["name"],
+                task["reminder_time"],
+                task.get("created_at", ""),
+                "", "", "", "", "", "",
+                "0%"
+            ])
+    
+    # Prepare response
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=taskflow_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+        }
+    )
+
 @api_router.get("/tasks/{task_id}")
 async def get_task(task_id: str, user: User = Depends(get_current_user)):
     """Get a specific task"""
