@@ -473,6 +473,16 @@ const Dashboard = ({ user, setUser }) => {
                   )}
                 </Button>
 
+                {/* Export CSV Button */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleExportCSV}
+                  data-testid="export-csv-btn"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+
                 {/* User Menu */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
