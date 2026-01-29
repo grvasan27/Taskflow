@@ -168,6 +168,31 @@ const Dashboard = ({ user, setUser }) => {
     };
   }, [tasks]);
 
+  // Export to CSV
+  const handleExportCSV = async () => {
+    try {
+      const response = await fetch(`${API}/tasks/export/csv`, {
+        credentials: "include",
+      });
+      
+      if (!response.ok) throw new Error("Failed to export");
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `taskflow_export_${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("CSV exported successfully");
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error("Failed to export CSV");
+    }
+  };
+
   // Add task
   const handleAddTask = async () => {
     if (!newTask.name.trim()) {
