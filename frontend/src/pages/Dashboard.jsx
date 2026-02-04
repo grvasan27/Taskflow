@@ -545,6 +545,56 @@ const Dashboard = ({ user, setUser }) => {
                   {format(startDate, "MMM d")} - {format(addDays(startDate, daysToShow - 1), "MMM d, yyyy")}
                 </div>
 
+                {/* Google Calendar */}
+                {calendarStatus.connected ? (
+                  <div className="flex items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={handleSyncCalendar}
+                          disabled={syncing}
+                          data-testid="sync-calendar-btn"
+                        >
+                          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Sync to Google Calendar</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={handleDisconnectCalendar}
+                          className="text-destructive hover:text-destructive"
+                          data-testid="disconnect-calendar-btn"
+                        >
+                          <Unlink className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Disconnect Google Calendar ({calendarStatus.email})</TooltipContent>
+                    </Tooltip>
+                  </div>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleConnectCalendar}
+                        className="gap-1"
+                        data-testid="connect-calendar-btn"
+                      >
+                        <CalendarIcon className="h-4 w-4" />
+                        <span className="hidden sm:inline text-xs">Connect Calendar</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Connect Google Calendar</TooltipContent>
+                  </Tooltip>
+                )}
+
                 {/* Bin Button */}
                 <Button
                   variant="outline"
