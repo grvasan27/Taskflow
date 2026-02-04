@@ -225,6 +225,62 @@ const Dashboard = ({ user, setUser }) => {
     }
   };
 
+  // Connect Google Calendar
+  const handleConnectCalendar = async () => {
+    try {
+      const response = await fetch(`${API}/calendar/auth/url`, {
+        credentials: "include",
+      });
+      
+      if (!response.ok) throw new Error("Failed to get auth URL");
+      
+      const data = await response.json();
+      window.location.href = data.authorization_url;
+    } catch (error) {
+      console.error("Calendar connect error:", error);
+      toast.error("Failed to connect calendar");
+    }
+  };
+
+  // Disconnect Google Calendar
+  const handleDisconnectCalendar = async () => {
+    try {
+      const response = await fetch(`${API}/calendar/disconnect`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!response.ok) throw new Error("Failed to disconnect");
+      
+      setCalendarStatus({ connected: false });
+      toast.success("Google Calendar disconnected");
+    } catch (error) {
+      console.error("Calendar disconnect error:", error);
+      toast.error("Failed to disconnect calendar");
+    }
+  };
+
+  // Sync to Google Calendar
+  const handleSyncCalendar = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch(`${API}/calendar/sync`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!response.ok) throw new Error("Failed to sync");
+      
+      const data = await response.json();
+      toast.success(data.message);
+    } catch (error) {
+      console.error("Calendar sync error:", error);
+      toast.error("Failed to sync to calendar");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // Add task
   const handleAddTask = async () => {
     if (!newTask.name.trim()) {
