@@ -129,10 +129,37 @@ const Dashboard = ({ user, setUser }) => {
     }
   }, []);
 
+  // Fetch Google Calendar status
+  const fetchCalendarStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/calendar/status`, {
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCalendarStatus(data);
+      }
+    } catch (error) {
+      console.error("Error fetching calendar status:", error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTasks();
     fetchDeletedTasks();
-  }, [fetchTasks, fetchDeletedTasks]);
+    fetchCalendarStatus();
+    
+    // Check for calendar connection callback
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('calendar_connected') === 'true') {
+      toast.success("Google Calendar connected successfully!");
+      fetchCalendarStatus();
+      window.history.replaceState({}, '', '/dashboard');
+    } else if (urlParams.get('calendar_error')) {
+      toast.error("Failed to connect Google Calendar");
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  }, [fetchTasks, fetchDeletedTasks, fetchCalendarStatus]);
 
   // Request notification permission
   useEffect(() => {
