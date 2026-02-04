@@ -588,6 +588,261 @@ async def delete_subtask(subtask_id: str, user: User = Depends(get_current_user)
     
     return {"message": "Subtask deleted successfully"}
 
+# ============== Google Calendar Integration ==============
+
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/userinfo.email"]
+
+@api_router.get("/calendar/auth/url")
+async def get_google_auth_url(request: Request, user: User = Depends(get_current_user)):
+    """Get Google OAuth URL for calendar access"""
+    # Get the frontend URL from referer or use default
+    referer = request.headers.get("referer", "")
+    base_url = referer.split("/dashboard")[0] if "/dashboard" in referer else os.environ.get('FRONTEND_URL', 'https://taskflow-tracker-23.preview.emergentagent.com')
+    redirect_uri = f"{base_url}/api/calendar/callback"
+    
+    auth_url = (
+        f"https://accounts.google.com/o/oauth2/auth?"
+        f"client_id={GOOGLE_CLIENT_ID}&"
+        f"redirect_uri={redirect_uri}&"
+        f"response_type=code&"
+        f"scope={'%20'.join(GOOGLE_SCOPES)}&"
+        f"access_type=offline&"
+        f"prompt=consent&"
+        f"state={user.user_id}"
+    )
+    
+    return {"authorization_url": auth_url, "redirect_uri": redirect_uri}
+
+@api_router.get("/calendar/callback")
+async def google_calendar_callback(code: str, state: str, request: Request):
+    """Handle Google OAuth callback"""
+    # Get redirect URI
+    referer = request.headers.get("referer", "")
+    base_url = str(request.base_url).rstrip("/")
+    # Extract the actual base URL from the request
+    host = request.headers.get("host", "")
+    scheme = request.headers.get("x-forwarded-proto", "https")
+    base_url = f"{scheme}://{host}"
+    redirect_uri = f"{base_url}/api/calendar/callback"
+    
+    # Exchange code for tokens
+    token_resp = requests.post('https://oauth2.googleapis.com/token', data={
+        'code': code,
+        'client_id': GOOGLE_CLIENT_ID,
+        'client_secret': GOOGLE_CLIENT_SECRET,
+        'redirect_uri': redirect_uri,
+        'grant_type': 'authorization_code'
+    })
+    
+    if token_resp.status_code != 200:
+        logger.error(f"Token exchange failed: {token_resp.text}")
+        return RedirectResponse(f"{base_url}/dashboard?calendar_error=token_exchange_failed")
+    
+    token_data = token_resp.json()
+    
+    # Get user email from Google
+    user_info_resp = requests.get(
+        'https://www.googleapis.com/oauth2/v2/userinfo',
+        headers={'Authorization': f'Bearer {token_data["access_token"]}'}
+    )
+    
+    if user_info_resp.status_code != 200:
+        return RedirectResponse(f"{base_url}/dashboard?calendar_error=user_info_failed")
+    
+    google_email = user_info_resp.json().get('email')
+    
+    # Save tokens to user document (state contains user_id)
+    user_id = state
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "google_calendar_tokens": token_data,
+            "google_calendar_email": google_email,
+            "google_calendar_connected_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return RedirectResponse(f"{base_url}/dashboard?calendar_connected=true")
+
+async def get_google_credentials(user_id: str):
+    """Get Google credentials for a user, refreshing if needed"""
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    
+    if not user_doc or not user_doc.get("google_calendar_tokens"):
+        return None
+    
+    tokens = user_doc["google_calendar_tokens"]
+    
+    creds = Credentials(
+        token=tokens.get('access_token'),
+        refresh_token=tokens.get('refresh_token'),
+        token_uri='https://oauth2.googleapis.com/token',
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        scopes=GOOGLE_SCOPES
+    )
+    
+    # Refresh if expired
+    if creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(GoogleRequest())
+            # Update stored tokens
+            await db.users.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "google_calendar_tokens.access_token": creds.token
+                }}
+            )
+        except Exception as e:
+            logger.error(f"Failed to refresh Google token: {e}")
+            return None
+    
+    return creds
+
+@api_router.get("/calendar/status")
+async def get_calendar_status(user: User = Depends(get_current_user)):
+    """Check if Google Calendar is connected"""
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    
+    if not user_doc:
+        return {"connected": False}
+    
+    connected = bool(user_doc.get("google_calendar_tokens"))
+    
+    return {
+        "connected": connected,
+        "email": user_doc.get("google_calendar_email") if connected else None,
+        "connected_at": user_doc.get("google_calendar_connected_at") if connected else None
+    }
+
+@api_router.post("/calendar/disconnect")
+async def disconnect_calendar(user: User = Depends(get_current_user)):
+    """Disconnect Google Calendar"""
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$unset": {
+            "google_calendar_tokens": "",
+            "google_calendar_email": "",
+            "google_calendar_connected_at": ""
+        }}
+    )
+    
+    # Also remove calendar event IDs from subtasks
+    await db.subtasks.update_many(
+        {"user_id": user.user_id},
+        {"$unset": {"calendar_event_id": ""}}
+    )
+    
+    return {"message": "Calendar disconnected"}
+
+@api_router.post("/calendar/sync")
+async def sync_to_calendar(user: User = Depends(get_current_user)):
+    """Sync all tasks and subtasks to Google Calendar"""
+    creds = await get_google_credentials(user.user_id)
+    
+    if not creds:
+        raise HTTPException(status_code=400, detail="Google Calendar not connected")
+    
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        
+        # Get all tasks with subtasks
+        tasks = await db.tasks.find(
+            {"user_id": user.user_id, "is_deleted": {"$ne": True}},
+            {"_id": 0}
+        ).to_list(1000)
+        
+        synced_count = 0
+        
+        for task in tasks:
+            subtasks = await db.subtasks.find(
+                {"task_id": task["task_id"], "user_id": user.user_id},
+                {"_id": 0}
+            ).to_list(1000)
+            
+            for subtask in subtasks:
+                # Create or update calendar event
+                event_body = {
+                    'summary': f"[{task['name']}] {subtask['name']}",
+                    'description': f"Task: {task['name']}\nSubtask: {subtask['name']}\n\n{subtask.get('notes', '')}",
+                    'start': {
+                        'date': subtask['start_date'],
+                    },
+                    'end': {
+                        'date': subtask['end_date'],
+                    },
+                    'reminders': {
+                        'useDefault': False,
+                        'overrides': [
+                            {'method': 'popup', 'minutes': 60},
+                        ],
+                    },
+                }
+                
+                existing_event_id = subtask.get('calendar_event_id')
+                
+                try:
+                    if existing_event_id:
+                        # Update existing event
+                        service.events().update(
+                            calendarId='primary',
+                            eventId=existing_event_id,
+                            body=event_body
+                        ).execute()
+                    else:
+                        # Create new event
+                        event = service.events().insert(
+                            calendarId='primary',
+                            body=event_body
+                        ).execute()
+                        
+                        # Save event ID to subtask
+                        await db.subtasks.update_one(
+                            {"subtask_id": subtask["subtask_id"]},
+                            {"$set": {"calendar_event_id": event['id']}}
+                        )
+                    
+                    synced_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to sync subtask {subtask['subtask_id']}: {e}")
+        
+        return {"message": f"Synced {synced_count} subtasks to Google Calendar", "synced_count": synced_count}
+    
+    except Exception as e:
+        logger.error(f"Calendar sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+@api_router.get("/calendar/events")
+async def get_calendar_events(user: User = Depends(get_current_user)):
+    """Get upcoming events from Google Calendar"""
+    creds = await get_google_credentials(user.user_id)
+    
+    if not creds:
+        raise HTTPException(status_code=400, detail="Google Calendar not connected")
+    
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        
+        now = datetime.now(timezone.utc).isoformat()
+        
+        events_result = service.events().list(
+            calendarId='primary',
+            timeMin=now,
+            maxResults=50,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        return {"events": events}
+    
+    except Exception as e:
+        logger.error(f"Failed to get calendar events: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get events: {str(e)}")
+
 # ============== Health Check ==============
 
 @api_router.get("/")
