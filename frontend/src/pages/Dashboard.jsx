@@ -46,6 +46,9 @@ import {
   ChevronRight,
   MessageSquare,
   Download,
+  RefreshCw,
+  Link,
+  Unlink,
 } from "lucide-react";
 import { format, addDays, differenceInDays, parseISO, isToday, startOfDay, isBefore, isAfter, isWithinInterval } from "date-fns";
 
@@ -66,6 +69,8 @@ const Dashboard = ({ user, setUser }) => {
   const [deletedTasks, setDeletedTasks] = useState([]);
   const [notesDialog, setNotesDialog] = useState(null);
   const [notesText, setNotesText] = useState("");
+  const [calendarStatus, setCalendarStatus] = useState({ connected: false });
+  const [syncing, setSyncing] = useState(false);
   const scrollContainerRef = useRef(null);
   const notificationIntervalRef = useRef(null);
 
