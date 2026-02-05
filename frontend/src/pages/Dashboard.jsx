@@ -719,6 +719,7 @@ const Dashboard = ({ user, setUser }) => {
                     Time
                   </div>
                   <div className="w-[80px] px-2 py-3 font-medium text-sm flex items-center justify-center">Progress</div>
+                  <div className="w-[70px] px-2 py-3 font-medium text-sm flex items-center justify-center">Actions</div>
                 </div>
 
                 {/* Task Rows */}
@@ -733,25 +734,117 @@ const Dashboard = ({ user, setUser }) => {
                   tasks.map((task) => {
                     const progress = calculateProgress(task);
                     const subtasks = task.subtasks || [];
+                    const isEditing = editingTask === task.task_id;
                     
                     return (
                       <div key={task.task_id}>
                         {/* Task Row */}
                         <div className="flex border-b border-border h-12 bg-muted/30" data-testid={`task-row-${task.task_id}`}>
-                          <div
-                            className="w-[200px] px-4 py-2 flex items-center gap-2 cursor-pointer hover:bg-muted/50 transition-colors"
-                            onClick={() => openSubtaskPage(task.task_id)}
-                          >
-                            <span className="font-medium truncate text-sm">{task.name}</span>
-                            <ExternalLink className="h-3 w-3 opacity-40 flex-shrink-0" />
-                          </div>
-                          <div className="w-[70px] px-2 py-2 flex items-center justify-center">
-                            <span className="text-xs bg-muted px-2 py-0.5 rounded font-mono">{task.reminder_time}</span>
-                          </div>
-                          <div className="w-[80px] px-2 py-2 flex flex-col items-center justify-center gap-0.5">
-                            <span className="text-xs font-medium text-accent">{progress}%</span>
-                            <Progress value={progress} className="h-1 w-full" />
-                          </div>
+                          {isEditing ? (
+                            <>
+                              <div className="w-[200px] px-2 py-1 flex items-center">
+                                <Input
+                                  value={editTaskName}
+                                  onChange={(e) => setEditTaskName(e.target.value)}
+                                  className="h-8 text-sm"
+                                  placeholder="Task name"
+                                  autoFocus
+                                  data-testid={`edit-task-name-${task.task_id}`}
+                                />
+                              </div>
+                              <div className="w-[70px] px-1 py-1 flex items-center">
+                                <Input
+                                  type="time"
+                                  value={editTaskReminder}
+                                  onChange={(e) => setEditTaskReminder(e.target.value)}
+                                  className="h-8 text-xs px-1"
+                                  data-testid={`edit-task-reminder-${task.task_id}`}
+                                />
+                              </div>
+                              <div className="w-[80px] px-2 py-2 flex items-center justify-center">
+                                <span className="text-xs text-muted-foreground">{progress}%</span>
+                              </div>
+                              <div className="w-[70px] px-1 py-2 flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-success hover:text-success"
+                                  onClick={() => handleUpdateTask(task.task_id)}
+                                  data-testid={`save-task-${task.task_id}`}
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    setEditingTask(null);
+                                    setEditTaskName("");
+                                    setEditTaskReminder("");
+                                  }}
+                                  data-testid={`cancel-edit-${task.task_id}`}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div
+                                className="w-[200px] px-4 py-2 flex items-center gap-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                                onClick={() => openSubtaskPage(task.task_id)}
+                              >
+                                <span className="font-medium truncate text-sm">{task.name}</span>
+                                <ExternalLink className="h-3 w-3 opacity-40 flex-shrink-0" />
+                              </div>
+                              <div className="w-[70px] px-2 py-2 flex items-center justify-center">
+                                <span className="text-xs bg-muted px-2 py-0.5 rounded font-mono">{task.reminder_time}</span>
+                              </div>
+                              <div className="w-[80px] px-2 py-2 flex flex-col items-center justify-center gap-0.5">
+                                <span className="text-xs font-medium text-accent">{progress}%</span>
+                                <Progress value={progress} className="h-1 w-full" />
+                              </div>
+                              <div className="w-[70px] px-1 py-2 flex items-center justify-center gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingTask(task.task_id);
+                                        setEditTaskName(task.name);
+                                        setEditTaskReminder(task.reminder_time);
+                                      }}
+                                      data-testid={`edit-task-${task.task_id}`}
+                                    >
+                                      <Edit2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Edit Task</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 hover:text-destructive"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteConfirm(task);
+                                      }}
+                                      data-testid={`delete-task-${task.task_id}`}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Delete Task</TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </>
+                          )}
                         </div>
 
                         {/* Subtask Rows */}
