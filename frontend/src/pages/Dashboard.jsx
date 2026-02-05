@@ -71,6 +71,9 @@ const Dashboard = ({ user, setUser }) => {
   const [notesText, setNotesText] = useState("");
   const [calendarStatus, setCalendarStatus] = useState({ connected: false });
   const [syncing, setSyncing] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [editTaskName, setEditTaskName] = useState("");
+  const [editTaskReminder, setEditTaskReminder] = useState("");
   const scrollContainerRef = useRef(null);
   const notificationIntervalRef = useRef(null);
 
