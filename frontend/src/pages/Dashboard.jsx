@@ -887,6 +887,7 @@ const Dashboard = ({ user, setUser }) => {
                                   {format(parseISO(subtask.start_date), "MMM d")}
                                 </span>
                               </div>
+                              <div className="w-[70px]"></div>
                             </div>
                           );
                         })}
