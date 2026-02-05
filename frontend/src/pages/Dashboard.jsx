@@ -311,6 +311,38 @@ const Dashboard = ({ user, setUser }) => {
     }
   };
 
+  // Update task (name or reminder)
+  const handleUpdateTask = async (taskId) => {
+    try {
+      const updates = {};
+      if (editTaskName.trim()) updates.name = editTaskName;
+      if (editTaskReminder) updates.reminder_time = editTaskReminder;
+      
+      if (Object.keys(updates).length === 0) {
+        setEditingTask(null);
+        return;
+      }
+
+      const response = await fetch(`${API}/tasks/${taskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) throw new Error("Failed to update task");
+
+      await fetchTasks();
+      setEditingTask(null);
+      setEditTaskName("");
+      setEditTaskReminder("");
+      toast.success("Task updated");
+    } catch (error) {
+      console.error("Error updating task:", error);
+      toast.error("Failed to update task");
+    }
+  };
+
   // Toggle subtask completion
   const handleToggleSubtask = async (subtask) => {
     try {
