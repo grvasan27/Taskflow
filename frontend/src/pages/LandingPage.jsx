@@ -8,6 +8,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const LandingPage = () => {
   const navigate = useNavigate();
   const [isChecking, setIsChecking] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     // Check if user is already authenticated
@@ -30,10 +31,24 @@ const LandingPage = () => {
     checkAuth();
   }, [navigate]);
 
-  const handleGoogleLogin = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/dashboard";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API}/auth/google/url`, {
+        credentials: "include",
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        window.location.href = data.authorization_url;
+      } else {
+        console.error("Failed to get auth URL");
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error("Auth error:", error);
+      setIsLoading(false);
+    }
   };
 
   if (isChecking) {
@@ -48,12 +63,12 @@ const LandingPage = () => {
     {
       icon: CheckCircle2,
       title: "Track Everything",
-      description: "Organize all your tasks in one powerful grid view",
+      description: "Organize all your tasks in one powerful Gantt view",
     },
     {
       icon: Calendar,
-      title: "Daily Progress",
-      description: "Visualize your progress day by day with custom date ranges",
+      title: "Google Calendar Sync",
+      description: "Automatically sync tasks to your Google Calendar",
     },
     {
       icon: Bell,
@@ -63,7 +78,7 @@ const LandingPage = () => {
     {
       icon: BarChart3,
       title: "Progress Insights",
-      description: "See completion percentages at a glance",
+      description: "Track day-by-day completion with visual progress",
     },
   ];
 
@@ -82,10 +97,10 @@ const LandingPage = () => {
             <Button
               onClick={handleGoogleLogin}
               variant="outline"
-              className="hidden sm:flex"
+              disabled={isLoading}
               data-testid="nav-login-btn"
             >
-              Sign In
+              {isLoading ? "Loading..." : "Sign In"}
             </Button>
           </nav>
 
@@ -101,14 +116,15 @@ const LandingPage = () => {
                 <span className="text-accent">Visualize Progress.</span>
               </h1>
               <p className="text-lg text-muted-foreground leading-relaxed mb-8 max-w-lg">
-                A powerful grid-based task tracker that lets you see your daily progress 
-                at a glance. Set reminders, track subtasks, and never lose sight of your goals.
+                A powerful Gantt-style task tracker with Google Calendar & Drive integration. 
+                Track daily progress, set reminders, and backup your data automatically.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button
                   onClick={handleGoogleLogin}
                   size="lg"
+                  disabled={isLoading}
                   className="google-btn bg-primary text-primary-foreground hover:bg-primary/90 active-scale"
                   data-testid="hero-login-btn"
                 >
@@ -130,10 +146,14 @@ const LandingPage = () => {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                     />
                   </svg>
-                  Continue with Google
+                  {isLoading ? "Redirecting..." : "Continue with Google"}
                   <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
+              
+              <p className="text-xs text-muted-foreground mt-4">
+                Includes Google Calendar & Drive integration for all accounts
+              </p>
             </div>
 
             {/* Right Column - Visual */}
@@ -191,11 +211,12 @@ const LandingPage = () => {
               Ready to take control of your tasks?
             </h2>
             <p className="text-muted-foreground mb-8">
-              Start tracking your progress today. It's free to get started.
+              Sign in with Google to get started. Your data syncs automatically with Calendar & Drive.
             </p>
             <Button
               onClick={handleGoogleLogin}
               size="lg"
+              disabled={isLoading}
               className="google-btn bg-accent text-accent-foreground hover:bg-accent/90 active-scale"
               data-testid="cta-login-btn"
             >
@@ -217,7 +238,7 @@ const LandingPage = () => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Get Started with Google
+              {isLoading ? "Redirecting..." : "Get Started with Google"}
             </Button>
           </div>
         </div>
