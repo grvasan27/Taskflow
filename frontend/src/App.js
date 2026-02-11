@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
@@ -6,62 +6,51 @@ import LandingPage from "@/pages/LandingPage";
 import Dashboard from "@/pages/Dashboard";
 import SubtaskPage from "@/pages/SubtaskPage";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// Auth Callback Component
-const AuthCallback = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const hasProcessed = useRef(false);
+// Theme Context
+const ThemeContext = createContext();
+
+export const useTheme = () => useContext(ThemeContext);
+
+const ThemeProvider = ({ children }) => {
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem("taskflow-theme");
+    return saved || "system";
+  });
 
   useEffect(() => {
-    // Use useRef to prevent double processing in StrictMode
-    if (hasProcessed.current) return;
-    hasProcessed.current = true;
-
-    const processAuth = async () => {
-      const hash = location.hash;
-      const sessionIdMatch = hash.match(/session_id=([^&]+)/);
-      
-      if (!sessionIdMatch) {
-        navigate("/", { replace: true });
-        return;
-      }
-
-      const sessionId = sessionIdMatch[1];
-
-      try {
-        const response = await fetch(`${API}/auth/session`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Auth failed");
-        }
-
-        const data = await response.json();
-        // Navigate to dashboard with user data
-        navigate("/dashboard", { replace: true, state: { user: data.user } });
-      } catch (error) {
-        console.error("Auth error:", error);
-        navigate("/", { replace: true });
+    const root = document.documentElement;
+    
+    const applyTheme = (isDark) => {
+      if (isDark) {
+        root.classList.add("dark");
+      } else {
+        root.classList.remove("dark");
       }
     };
 
-    processAuth();
-  }, [location, navigate]);
+    if (theme === "system") {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      applyTheme(mediaQuery.matches);
+      
+      const handler = (e) => applyTheme(e.matches);
+      mediaQuery.addEventListener("change", handler);
+      return () => mediaQuery.removeEventListener("change", handler);
+    } else {
+      applyTheme(theme === "dark");
+    }
+  }, [theme]);
+
+  const setThemeAndSave = (newTheme) => {
+    setTheme(newTheme);
+    localStorage.setItem("taskflow-theme", newTheme);
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-        <p className="text-muted-foreground">Authenticating...</p>
-      </div>
-    </div>
+    <ThemeContext.Provider value={{ theme, setTheme: setThemeAndSave }}>
+      {children}
+    </ThemeContext.Provider>
   );
 };
 
@@ -73,13 +62,6 @@ const ProtectedRoute = ({ children }) => {
   const location = useLocation();
 
   useEffect(() => {
-    // If user data was passed from AuthCallback, use it
-    if (location.state?.user) {
-      setUser(location.state.user);
-      setIsAuthenticated(true);
-      return;
-    }
-
     const checkAuth = async () => {
       try {
         const response = await fetch(`${API}/auth/me`, {
@@ -100,7 +82,7 @@ const ProtectedRoute = ({ children }) => {
     };
 
     checkAuth();
-  }, [location, navigate]);
+  }, [navigate]);
 
   if (isAuthenticated === null) {
     return (
@@ -114,20 +96,11 @@ const ProtectedRoute = ({ children }) => {
     return null;
   }
 
-  // Clone children and pass user as prop
   return children({ user, setUser });
 };
 
 // App Router Component
 function AppRouter() {
-  const location = useLocation();
-
-  // CRITICAL: Check for session_id synchronously during render
-  // This prevents race conditions by processing auth FIRST
-  if (location.hash?.includes("session_id=")) {
-    return <AuthCallback />;
-  }
-
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
@@ -152,34 +125,15 @@ function AppRouter() {
 }
 
 function App() {
-  // Theme detection
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    
-    const handleChange = (e) => {
-      if (e.matches) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-    };
-
-    // Set initial theme
-    handleChange(mediaQuery);
-
-    // Listen for changes
-    mediaQuery.addEventListener("change", handleChange);
-
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, []);
-
   return (
-    <div className="App min-h-screen bg-background">
-      <BrowserRouter>
-        <AppRouter />
-      </BrowserRouter>
-      <Toaster position="bottom-right" />
-    </div>
+    <ThemeProvider>
+      <div className="App min-h-screen bg-background">
+        <BrowserRouter>
+          <AppRouter />
+        </BrowserRouter>
+        <Toaster position="bottom-right" />
+      </div>
+    </ThemeProvider>
   );
 }
 
