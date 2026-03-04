@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: mcr.microsoft.com/devcontainers/python:3.10
+    image: mcr.microsoft.com/devcontainers/universal:2
     volumes:
       - ..:/workspace:cached
     network_mode: service:db
