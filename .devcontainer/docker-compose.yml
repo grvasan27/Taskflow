@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/python:3.10
+    volumes:
+      - ..:/workspace:cached
+    network_mode: service:db
+    # Overrides default command so container doesn't exit immediately 
+    command: sleep infinity
+
+  db:
+    image: mongo:latest
+    restart: always
+    environment:
+      - MONGO_INITDB_DATABASE=taskflow
