@@ -1,0 +1,13 @@
+1) Check and run Locally
+2) Create a Proper deployment and docker image CI/cd
+3) Add features, remove logos and add collaboration of users thru email integration any email and 
+login , password safety and 2FA
+4) Test for safety and db encryption
+5) Runs Locally
+6) Webapp-mobile app
+7) Deploy on Oracle or host it freetext
+8) Create a invite for first 10000 people to signup and try
+9) Make it open source and host on github
+10) Add AI features to suggest tasks and subtasks
+11) Dashboard to track metrics
+12) Licensing and legal stuff
