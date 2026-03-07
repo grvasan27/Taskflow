@@ -21,12 +21,23 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+env_path = ROOT_DIR / '.env'
+
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    print(f"Warning: .env file not found at {env_path}")
+
+def get_env_var(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise KeyError(f"Critical environment variable '{name}' is missing. Please check your backend/.env file.")
+    return value
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+mongo_url = get_env_var('MONGO_URL')
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[get_env_var('DB_NAME')]
 
 # Create the main app
 app = FastAPI()
@@ -93,7 +104,15 @@ class DayCompletionUpdate(BaseModel):
 def get_base_url(request: Request) -> str:
     """Get the base URL from request"""
     host = request.headers.get("host", "")
-    scheme = request.headers.get("x-forwarded-proto", "https")
+    # x-forwarded-proto is set by reverse proxies in production (https)
+    # Locally there is no proxy, so default to http for localhost
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto:
+        scheme = forwarded_proto
+    elif "localhost" in host or "127.0.0.1" in host:
+        scheme = "http"
+    else:
+        scheme = "https"
     return f"{scheme}://{host}"
 
 async def get_current_user(request: Request) -> User:
@@ -883,7 +902,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
