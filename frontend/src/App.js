@@ -21,24 +21,34 @@ const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     const root = document.documentElement;
-    
-    const applyTheme = (isDark) => {
-      if (isDark) {
+    // All possible theme classes
+    const allThemeClasses = ["dark", "theme-slate", "theme-sage", "theme-midnight"];
+
+    const applyTheme = (themeName) => {
+      // Remove all theme classes first
+      root.classList.remove(...allThemeClasses);
+
+      if (themeName === "dark") {
         root.classList.add("dark");
-      } else {
-        root.classList.remove("dark");
+      } else if (themeName === "slate") {
+        root.classList.add("theme-slate");
+      } else if (themeName === "sage") {
+        root.classList.add("theme-sage");
+      } else if (themeName === "midnight") {
+        root.classList.add("dark", "theme-midnight");
       }
+      // "light" and "system" (light) → no extra classes
     };
 
     if (theme === "system") {
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      applyTheme(mediaQuery.matches);
-      
-      const handler = (e) => applyTheme(e.matches);
+      applyTheme(mediaQuery.matches ? "dark" : "light");
+
+      const handler = (e) => applyTheme(e.matches ? "dark" : "light");
       mediaQuery.addEventListener("change", handler);
       return () => mediaQuery.removeEventListener("change", handler);
     } else {
-      applyTheme(theme === "dark");
+      applyTheme(theme);
     }
   }, [theme]);
 

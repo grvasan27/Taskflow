@@ -11,76 +11,179 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
     font-family: 'Manrope', sans-serif;
 }
 
-code, .mono {
+code,
+.mono {
     font-family: 'JetBrains Mono', monospace;
 }
 
 @layer base {
+
+    /* ── Light (default) — clean stark white, high contrast ── */
     :root {
         --background: 0 0% 100%;
+        /* pure white */
         --foreground: 222 47% 11%;
+        /* dark navy for excellent legibility */
         --card: 0 0% 100%;
+        /* white cards */
         --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
         --popover-foreground: 222 47% 11%;
         --primary: 222 47% 11%;
         --primary-foreground: 210 40% 98%;
-        --secondary: 210 40% 96%;
+        --secondary: 210 40% 96.1%;
         --secondary-foreground: 222 47% 11%;
-        --muted: 210 40% 96%;
-        --muted-foreground: 215 16% 47%;
-        --accent: 217 91% 60%;
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 36.9%;
+        /* darker grey-slate, very readable */
+        --accent: 221 83% 53%;
+        /* primary blue */
         --accent-foreground: 0 0% 100%;
-        --destructive: 0 84% 60%;
+        --destructive: 0 84.2% 60.2%;
+        /* clear red */
         --destructive-foreground: 0 0% 98%;
-        --success: 142 71% 45%;
+        --success: 142 70.6% 25.3%;
+        /* clear dark green for good contrast */
         --success-foreground: 0 0% 100%;
-        --warning: 38 92% 50%;
+        --warning: 34 85% 44%;
         --warning-foreground: 0 0% 100%;
-        --border: 214 32% 91%;
-        --input: 214 32% 91%;
-        --ring: 217 91% 60%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
+        --border: 214.3 31.8% 85.4%;
+        --input: 214.3 31.8% 85.4%;
+        --ring: 221 83% 53%;
+        --chart-1: 221 83% 53%;
+        --chart-2: 142 60% 34%;
+        --chart-3: 5 80% 48%;
+        --chart-4: 34 85% 44%;
+        --chart-5: 262 60% 54%;
         --radius: 0.375rem;
     }
-    
+
+    /* ── Dark ── */
     .dark {
-        --background: 222 47% 2%;
-        --foreground: 210 40% 98%;
-        --card: 222 47% 5%;
-        --card-foreground: 210 40% 98%;
-        --popover: 222 47% 5%;
-        --popover-foreground: 210 40% 98%;
-        --primary: 210 40% 98%;
-        --primary-foreground: 222 47% 11%;
-        --secondary: 217 33% 17%;
-        --secondary-foreground: 210 40% 98%;
-        --muted: 217 33% 17%;
-        --muted-foreground: 215 20% 65%;
+        --background: 222 30% 7%;
+        --foreground: 210 40% 96%;
+        --card: 222 28% 10%;
+        --card-foreground: 210 40% 96%;
+        --popover: 222 28% 10%;
+        --popover-foreground: 210 40% 96%;
+        --primary: 210 40% 96%;
+        --primary-foreground: 222 30% 11%;
+        --secondary: 217 25% 18%;
+        --secondary-foreground: 210 40% 96%;
+        --muted: 217 25% 18%;
+        --muted-foreground: 215 20% 62%;
         --accent: 217 91% 60%;
         --accent-foreground: 0 0% 100%;
-        --destructive: 0 62% 30%;
+        --destructive: 5 72% 45%;
         --destructive-foreground: 0 0% 98%;
-        --success: 142 71% 45%;
+        --success: 142 58% 42%;
         --success-foreground: 0 0% 100%;
-        --warning: 38 92% 50%;
+        --warning: 38 88% 46%;
         --warning-foreground: 0 0% 100%;
-        --border: 217 33% 17%;
-        --input: 217 33% 17%;
+        --border: 217 25% 20%;
+        --input: 217 25% 20%;
         --ring: 217 91% 60%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
+        --chart-1: 217 91% 60%;
+        --chart-2: 142 58% 42%;
+        --chart-3: 5 72% 45%;
+        --chart-4: 38 88% 46%;
+        --chart-5: 262 60% 62%;
+    }
+
+    /* ── Slate theme ── */
+    .theme-slate {
+        --background: 215 25% 95%;
+        --foreground: 218 30% 12%;
+        --card: 0 0% 100%;
+        --card-foreground: 218 30% 12%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 218 30% 12%;
+        --primary: 218 30% 14%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 215 20% 89%;
+        --secondary-foreground: 218 30% 14%;
+        --muted: 215 18% 91%;
+        --muted-foreground: 216 16% 46%;
+        --accent: 199 82% 42%;
+        /* teal-blue */
+        --accent-foreground: 0 0% 100%;
+        --destructive: 5 80% 48%;
+        --destructive-foreground: 0 0% 98%;
+        --success: 142 60% 34%;
+        --success-foreground: 0 0% 100%;
+        --warning: 34 85% 44%;
+        --warning-foreground: 0 0% 100%;
+        --border: 215 20% 83%;
+        --input: 215 20% 86%;
+        --ring: 199 82% 42%;
+        --radius: 0.375rem;
+    }
+
+    /* ── Sage (green-tinted neutral) theme ── */
+    .theme-sage {
+        --background: 145 15% 95%;
+        --foreground: 150 20% 12%;
+        --card: 0 0% 100%;
+        --card-foreground: 150 20% 12%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 150 20% 12%;
+        --primary: 150 20% 14%;
+        --primary-foreground: 145 40% 98%;
+        --secondary: 145 12% 89%;
+        --secondary-foreground: 150 20% 14%;
+        --muted: 145 10% 91%;
+        --muted-foreground: 150 12% 46%;
+        --accent: 158 60% 36%;
+        /* forest green */
+        --accent-foreground: 0 0% 100%;
+        --destructive: 5 80% 48%;
+        --destructive-foreground: 0 0% 98%;
+        --success: 142 60% 34%;
+        --success-foreground: 0 0% 100%;
+        --warning: 34 85% 44%;
+        --warning-foreground: 0 0% 100%;
+        --border: 145 14% 83%;
+        --input: 145 14% 86%;
+        --ring: 158 60% 36%;
+        --radius: 0.375rem;
+    }
+
+    /* ── Midnight dark theme ── */
+    .theme-midnight {
+        --background: 230 35% 5%;
+        --foreground: 220 30% 94%;
+        --card: 230 32% 8%;
+        --card-foreground: 220 30% 94%;
+        --popover: 230 32% 8%;
+        --popover-foreground: 220 30% 94%;
+        --primary: 220 30% 92%;
+        --primary-foreground: 230 35% 7%;
+        --secondary: 228 22% 14%;
+        --secondary-foreground: 220 30% 92%;
+        --muted: 228 22% 14%;
+        --muted-foreground: 220 16% 60%;
+        --accent: 248 80% 65%;
+        /* violet */
+        --accent-foreground: 0 0% 100%;
+        --destructive: 5 72% 45%;
+        --destructive-foreground: 0 0% 98%;
+        --success: 142 58% 42%;
+        --success-foreground: 0 0% 100%;
+        --warning: 38 88% 46%;
+        --warning-foreground: 0 0% 100%;
+        --border: 228 22% 16%;
+        --input: 228 22% 16%;
+        --ring: 248 80% 65%;
+        --radius: 0.375rem;
     }
 }
 
@@ -88,6 +191,7 @@ code, .mono {
     * {
         @apply border-border;
     }
+
     body {
         @apply bg-background text-foreground;
     }
@@ -127,7 +231,9 @@ code, .mono {
 
 /* Progress bar animation */
 @keyframes progress-fill {
-    from { width: 0; }
+    from {
+        width: 0;
+    }
 }
 
 .progress-animated {
@@ -155,6 +261,7 @@ code, .mono {
         opacity: 0;
         transform: translateY(10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -170,7 +277,7 @@ code, .mono {
     .task-grid {
         font-size: 0.875rem;
     }
-    
+
     .task-cell {
         @apply px-1 py-2 min-h-[40px];
     }

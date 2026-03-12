@@ -1,0 +1,5 @@
+Try running in powershell
+
+    Get-Service -Name "MongoDB"
+
+    Start-Service -Name "MongoDB"

@@ -63,7 +63,7 @@ const LandingPage = () => {
     {
       icon: CheckCircle2,
       title: "Track Everything",
-      description: "Organize all your tasks in one powerful Gantt view",
+      description: "Organize all your tasks in one powerful visual view",
     },
     {
       icon: Calendar,
@@ -118,7 +118,7 @@ const LandingPage = () => {
                 <span className="text-accent">Visualize Progress.</span>
               </h1>
               <p className="text-lg text-muted-foreground leading-relaxed mb-8 max-w-lg">
-                A powerful Gantt-style task tracker with Google Calendar & Drive integration.
+                A powerful task tracker with Google Calendar & Drive integration.
                 Track daily progress, set reminders, and backup your data automatically.
               </p>
 
