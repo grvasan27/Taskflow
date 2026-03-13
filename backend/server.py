@@ -1329,6 +1329,8 @@ app.add_middleware(
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
+        "https://taskflow2-xi.vercel.app",
+        "https://www.taskflowapp.site",
     ],
     allow_methods=["*"],
     allow_headers=["*"],
