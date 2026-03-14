@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getAuthHeaders } from "@/App";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Calendar, Bell, BarChart3, ArrowRight } from "lucide-react";
 
@@ -15,6 +16,7 @@ const LandingPage = () => {
     const checkAuth = async () => {
       try {
         const response = await fetch(`${API}/auth/me`, {
+          headers: getAuthHeaders(),
           credentials: "include",
         });
 
@@ -35,6 +37,7 @@ const LandingPage = () => {
     setIsLoading(true);
     try {
       const response = await fetch(`${API}/auth/google/url`, {
+        headers: getAuthHeaders(),
         credentials: "include",
       });
 

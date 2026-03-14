@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useTheme } from "@/App";
+import { useTheme, getAuthHeaders } from "@/App";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -66,8 +66,14 @@ const SubtaskPage = ({ user }) => {
   const fetchData = useCallback(async () => {
     try {
       const [taskRes, subtasksRes] = await Promise.all([
-        fetch(`${API}/tasks/${taskId}`, { credentials: "include" }),
-        fetch(`${API}/tasks/${taskId}/subtasks`, { credentials: "include" }),
+        fetch(`${API}/tasks/${taskId}`, {
+          headers: getAuthHeaders(),
+          credentials: "include"
+        }),
+        fetch(`${API}/tasks/${taskId}/subtasks`, {
+          headers: getAuthHeaders(),
+          credentials: "include"
+        }),
       ]);
 
       if (!taskRes.ok) {
@@ -109,7 +115,10 @@ const SubtaskPage = ({ user }) => {
     try {
       const response = await fetch(`${API}/tasks/${taskId}/subtasks`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify(newSubtask),
       });
@@ -134,7 +143,10 @@ const SubtaskPage = ({ user }) => {
     try {
       const response = await fetch(`${API}/subtasks/${subtaskId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify(updates),
       });
@@ -154,7 +166,10 @@ const SubtaskPage = ({ user }) => {
     try {
       const response = await fetch(`${API}/subtasks/${subtaskId}/day/${date}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({
           date,
@@ -176,7 +191,10 @@ const SubtaskPage = ({ user }) => {
     try {
       const response = await fetch(`${API}/subtasks/${dayNotesDialog.subtaskId}/day/${dayNotesDialog.date}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({
           date: dayNotesDialog.date,
@@ -199,6 +217,7 @@ const SubtaskPage = ({ user }) => {
     try {
       await fetch(`${API}/subtasks/${subtaskId}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
         credentials: "include",
       });
 
@@ -284,7 +303,7 @@ const SubtaskPage = ({ user }) => {
                 </span>
               </div>
             </div>
-            
+
             {/* Theme Toggle */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -298,7 +317,7 @@ const SubtaskPage = ({ user }) => {
                 <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="mr-2 h-4 w-4" /> System</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            
+
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-6 w-6 text-accent" />
               <span className="font-medium font-['Manrope']">TaskFlow</span>
@@ -427,9 +446,8 @@ const SubtaskPage = ({ user }) => {
                           return (
                             <div
                               key={dateStr}
-                              className={`relative p-2 rounded-sm border text-center ${
-                                completed ? "bg-success/10 border-success/30" : overdue ? "bg-destructive/10 border-destructive/30" : "border-border"
-                              }`}
+                              className={`relative p-2 rounded-sm border text-center ${completed ? "bg-success/10 border-success/30" : overdue ? "bg-destructive/10 border-destructive/30" : "border-border"
+                                }`}
                             >
                               <p className="text-[10px] text-muted-foreground">{format(parseISO(dateStr), "EEE")}</p>
                               <p className={`text-sm font-medium ${completed ? "text-success" : overdue ? "text-destructive" : ""}`}>

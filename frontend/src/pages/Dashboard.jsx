@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTheme } from "@/App";
+import { useTheme, getAuthHeaders } from "@/App";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -158,8 +158,8 @@ const Dashboard = ({ user, setUser }) => {
     setIsLoadingAdmin(true);
     try {
       const [usersRes, settingsRes] = await Promise.all([
-        fetch(`${API}/admin/users`),
-        fetch(`${API}/admin/settings`)
+        fetch(`${API}/admin/users`, { headers: getAuthHeaders() }),
+        fetch(`${API}/admin/settings`, { headers: getAuthHeaders() })
       ]);
       if (usersRes.ok && settingsRes.ok) {
         setAdminUsers(await usersRes.json());
@@ -174,7 +174,10 @@ const Dashboard = ({ user, setUser }) => {
 
   const handleApproveUser = async (userId) => {
     try {
-      const res = await fetch(`${API}/admin/users/${userId}/approve`, { method: "POST" });
+      const res = await fetch(`${API}/admin/users/${userId}/approve`, {
+        method: "POST",
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         toast.success("User approved");
         fetchAdminData();
@@ -186,7 +189,10 @@ const Dashboard = ({ user, setUser }) => {
 
   const handleToggleAdmin = async (userId) => {
     try {
-      const res = await fetch(`${API}/admin/users/${userId}/toggle-admin`, { method: "POST" });
+      const res = await fetch(`${API}/admin/users/${userId}/toggle-admin`, {
+        method: "POST",
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         toast.success("Admin status updated");
         fetchAdminData();
@@ -200,7 +206,10 @@ const Dashboard = ({ user, setUser }) => {
     try {
       const res = await fetch(`${API}/admin/settings`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(adminSettings)
       });
       if (res.ok) {
@@ -224,7 +233,10 @@ const Dashboard = ({ user, setUser }) => {
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
     try {
-      const response = await fetch(`${API}/tasks`, { credentials: "include" });
+      const response = await fetch(`${API}/tasks`, {
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       if (!response.ok) {
         if (response.status === 401) {
           navigate("/", { replace: true });
@@ -244,7 +256,10 @@ const Dashboard = ({ user, setUser }) => {
 
   const fetchDeletedTasks = useCallback(async () => {
     try {
-      const response = await fetch(`${API}/tasks/bin`, { credentials: "include" });
+      const response = await fetch(`${API}/tasks/bin`, {
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       if (response.ok) {
         const data = await response.json();
         setDeletedTasks(data);
@@ -256,7 +271,10 @@ const Dashboard = ({ user, setUser }) => {
 
   const fetchCalendarStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${API}/calendar/status`, { credentials: "include" });
+      const response = await fetch(`${API}/calendar/status`, {
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       if (response.ok) {
         const data = await response.json();
         setCalendarStatus(data);
@@ -306,7 +324,10 @@ const Dashboard = ({ user, setUser }) => {
     try {
       const response = await fetch(`${API}/tasks`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify(newTask),
       });
@@ -331,7 +352,10 @@ const Dashboard = ({ user, setUser }) => {
       }
       const response = await fetch(`${API}/tasks/${taskId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify(updates),
       });
@@ -348,7 +372,11 @@ const Dashboard = ({ user, setUser }) => {
 
   const handleDeleteTask = async (taskId) => {
     try {
-      await fetch(`${API}/tasks/${taskId}`, { method: "DELETE", credentials: "include" });
+      await fetch(`${API}/tasks/${taskId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       await fetchTasks();
       await fetchDeletedTasks();
       setDeleteConfirm(null);
@@ -360,7 +388,11 @@ const Dashboard = ({ user, setUser }) => {
 
   const handleRestoreTask = async (taskId) => {
     try {
-      await fetch(`${API}/tasks/${taskId}/restore`, { method: "POST", credentials: "include" });
+      await fetch(`${API}/tasks/${taskId}/restore`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       await fetchTasks();
       await fetchDeletedTasks();
       toast.success("Task restored");
@@ -371,7 +403,11 @@ const Dashboard = ({ user, setUser }) => {
 
   const handlePermanentDelete = async (taskId) => {
     try {
-      await fetch(`${API}/tasks/${taskId}/permanent`, { method: "DELETE", credentials: "include" });
+      await fetch(`${API}/tasks/${taskId}/permanent`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       await fetchDeletedTasks();
       toast.success("Task permanently deleted");
     } catch (error) {
@@ -391,7 +427,10 @@ const Dashboard = ({ user, setUser }) => {
 
       const response = await fetch(`${API}/subtasks/${subtask.subtask_id}/day/${date}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({
           date,
@@ -411,7 +450,10 @@ const Dashboard = ({ user, setUser }) => {
   // Export CSV
   const handleExportCSV = async () => {
     try {
-      const response = await fetch(`${API}/tasks/export/csv`, { credentials: "include" });
+      const response = await fetch(`${API}/tasks/export/csv`, {
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       if (!response.ok) throw new Error("Failed to export");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -435,7 +477,10 @@ const Dashboard = ({ user, setUser }) => {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       const response = await fetch(`${API}/calendar/sync`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({ timezone })
       });
@@ -453,7 +498,11 @@ const Dashboard = ({ user, setUser }) => {
   const handleBackupToDrive = async () => {
     setBackingUp(true);
     try {
-      const response = await fetch(`${API}/drive/backup`, { method: "POST", credentials: "include" });
+      const response = await fetch(`${API}/drive/backup`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       if (!response.ok) throw new Error("Failed to backup");
       const data = await response.json();
       toast.success(data.message);
@@ -471,7 +520,11 @@ const Dashboard = ({ user, setUser }) => {
     }
     setRestoringFromDrive(true);
     try {
-      const response = await fetch(`${API}/drive/restore`, { method: "POST", credentials: "include" });
+      const response = await fetch(`${API}/drive/restore`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       if (!response.ok) throw new Error("Failed to restore");
       const data = await response.json();
       toast.success(data.message);
@@ -497,7 +550,10 @@ const Dashboard = ({ user, setUser }) => {
       const taskIds = items.map(t => t.task_id);
       await fetch(`${API}/tasks/reorder`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({ task_ids: taskIds }),
       });
@@ -510,7 +566,13 @@ const Dashboard = ({ user, setUser }) => {
   // Logout
   const handleLogout = async () => {
     try {
-      await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
+      await fetch(`${API}/auth/logout`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
+      // Clear local session token
+      localStorage.removeItem('taskflow_session');
       setUser(null);
       navigate("/");
     } catch (error) {
@@ -523,7 +585,10 @@ const Dashboard = ({ user, setUser }) => {
     try {
       await fetch(`${API}/auth/settings`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({
           auto_backup_enabled: user.auto_backup_enabled || false,
@@ -542,7 +607,10 @@ const Dashboard = ({ user, setUser }) => {
 
   const fetchSubtasks = useCallback(async (taskId) => {
     try {
-      const res = await fetch(`${API}/tasks/${taskId}/subtasks`, { credentials: "include" });
+      const res = await fetch(`${API}/tasks/${taskId}/subtasks`, {
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       if (res.ok) {
         const data = await res.json();
         setTaskSubtasksMap(prev => ({ ...prev, [taskId]: data }));
@@ -564,7 +632,10 @@ const Dashboard = ({ user, setUser }) => {
       if (payload.date_mode !== "custom") payload.custom_dates = [];
       const res = await fetch(`${API}/tasks/${taskId}/subtasks`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify(payload),
       });
@@ -579,7 +650,11 @@ const Dashboard = ({ user, setUser }) => {
 
   const handleDeleteSubtask = async (subtaskId, taskId) => {
     try {
-      await fetch(`${API}/subtasks/${subtaskId}`, { method: "DELETE", credentials: "include" });
+      await fetch(`${API}/subtasks/${subtaskId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
       toast.success("Subtask deleted");
       await fetchSubtasks(taskId);
       await fetchTasks();
@@ -599,7 +674,10 @@ const Dashboard = ({ user, setUser }) => {
 
       await fetch(`${API}/subtasks/${subtaskId}/day/${date}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({ date, completed, notes: text, time_slot: timeSlot, completed_at: payloadCompletedAt }),
       });
@@ -620,7 +698,10 @@ const Dashboard = ({ user, setUser }) => {
     try {
       const res = await fetch(`${API}/subtasks/${editingSubtask.subtask_id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
         credentials: "include",
         body: JSON.stringify({ name: editingSubtask.name, start_date: editingSubtask.start_date, end_date: editingSubtask.end_date }),
       });
@@ -1352,14 +1433,24 @@ const Dashboard = ({ user, setUser }) => {
                                                 if (!subtask.time_slot) {
                                                   // First time: set as default for all cells
                                                   await fetch(`${API}/subtasks/${subtask.subtask_id}`, {
-                                                    method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+                                                    method: "PUT",
+                                                    headers: {
+                                                      "Content-Type": "application/json",
+                                                      ...getAuthHeaders()
+                                                    },
+                                                    credentials: "include",
                                                     body: JSON.stringify({ time_slot: editingSlot.value }),
                                                   });
                                                 } else {
                                                   // Subsequent: per-day override only
                                                   const cur = subtask.day_completions?.[dateStr] || {};
                                                   await fetch(`${API}/subtasks/${subtask.subtask_id}/day/${dateStr}`, {
-                                                    method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+                                                    method: "PUT",
+                                                    headers: {
+                                                      "Content-Type": "application/json",
+                                                      ...getAuthHeaders()
+                                                    },
+                                                    credentials: "include",
                                                     body: JSON.stringify({ date: dateStr, completed: cur.completed || false, notes: cur.notes || "", time_slot: editingSlot.value }),
                                                   });
                                                 }
@@ -1380,14 +1471,24 @@ const Dashboard = ({ user, setUser }) => {
                                                 if (!subtask.time_slot) {
                                                   // First time: set as default for all cells
                                                   await fetch(`${API}/subtasks/${subtask.subtask_id}`, {
-                                                    method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+                                                    method: "PUT",
+                                                    headers: {
+                                                      "Content-Type": "application/json",
+                                                      ...getAuthHeaders()
+                                                    },
+                                                    credentials: "include",
                                                     body: JSON.stringify({ time_slot: editingSlot.value }),
                                                   });
                                                 } else {
                                                   // Subsequent: per-day override only
                                                   const cur = subtask.day_completions?.[dateStr] || {};
                                                   await fetch(`${API}/subtasks/${subtask.subtask_id}/day/${dateStr}`, {
-                                                    method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+                                                    method: "PUT",
+                                                    headers: {
+                                                      "Content-Type": "application/json",
+                                                      ...getAuthHeaders()
+                                                    },
+                                                    credentials: "include",
                                                     body: JSON.stringify({ date: dateStr, completed: cur.completed || false, notes: cur.notes || "", time_slot: editingSlot.value }),
                                                   });
                                                 }
@@ -1399,7 +1500,12 @@ const Dashboard = ({ user, setUser }) => {
                                               onClick={async () => {
                                                 const cur = subtask.day_completions?.[dateStr] || {};
                                                 await fetch(`${API}/subtasks/${subtask.subtask_id}/day/${dateStr}`, {
-                                                  method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+                                                  method: "PUT",
+                                                  headers: {
+                                                    "Content-Type": "application/json",
+                                                    ...getAuthHeaders()
+                                                  },
+                                                  credentials: "include",
                                                   body: JSON.stringify({ date: dateStr, completed: cur.completed || false, notes: cur.notes || "", time_slot: "" }),
                                                 });
                                                 setEditingSlot(null);

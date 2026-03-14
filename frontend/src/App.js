@@ -96,9 +96,6 @@ const ProtectedRoute = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Extract token from URL (set after OAuth redirect) and store it first
-        extractAndStoreToken();
-
         const response = await fetch(`${API}/auth/me`, {
           credentials: "include",
           headers: getAuthHeaders(),
@@ -161,6 +158,11 @@ function AppRouter() {
 }
 
 function App() {
+  useEffect(() => {
+    // Extract token from URL on initial load for ANY route
+    extractAndStoreToken();
+  }, []);
+
   return (
     <ThemeProvider>
       <div className="App min-h-screen bg-background">
