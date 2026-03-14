@@ -6,8 +6,7 @@
 
 # Dependencies
 node_modules/
-/node_modules
-/.pnp
+.pnp
 .pnp.js
 .yarn/install-state.gz
 .yarn/*
@@ -19,23 +18,20 @@ node_modules/
 # Testing
 /coverage
 
-# Next.js
-/.next/
-/out/
-next-env.d.ts
-*.tsbuildinfo
-
 # Production builds
 /build
 dist/
-dist
 
-# Environment files (comprehensive coverage)
-
+# Secrets and environment files
+.env
+.env.*
+*.env
 *token.json*
 *credentials.json*
+client_secret_*.json
+PAT.txt
 
-# Logs and debug files
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -48,23 +44,20 @@ dump.rdb
 
 # Python
 __pycache__/
-*pyc*
+*.pyc
+*.pyo
 venv/
 .venv/
 
 # Development tools
-chainlit.md
 .chainlit
 .ipynb_checkpoints/
-.ac
+.cache/
 
 # Deployment
 .vercel
 
-# Data and databases
-agenthub/agents/youtube/db
-
-# Archive files and large assets
+# Archive files
 **/*.zip
 **/*.tar.gz
 **/*.tar
@@ -72,21 +65,3 @@ agenthub/agents/youtube/db
 *.pack
 *.deb
 *.dylib
-
-# Build caches
-.cache/
-
-# Mobile development
-android-sdk/ frontend/node_modules/.cache/default-development/1.pack
-frontend/node_modules/.cache/default-development/1.pack
-frontend/node_modules/.cache/default-development/0.pack
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
-
-PAT.txt

@@ -420,8 +420,8 @@ async def google_auth_callback(code: str, request: Request, response: Response):
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=False,          # False for localhost HTTP; True in production HTTPS
-        samesite="lax",        # lax works on same-origin redirects
+        secure=True,           # Must be True for HTTPS in production
+        samesite="none",       # Required for cross-origin (Vercel frontend + Render backend)
         path="/",
         max_age=7 * 24 * 60 * 60
     )
@@ -1331,6 +1331,8 @@ app.add_middleware(
         "http://127.0.0.1:3001",
         "https://taskflow2-xi.vercel.app",
         "https://www.taskflowapp.site",
+        "https://taskflowapp.site",
+        "https://taskflow-7e2j.onrender.com",
     ],
     allow_methods=["*"],
     allow_headers=["*"],

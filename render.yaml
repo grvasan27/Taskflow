@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: taskflow-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 server:app --bind 0.0.0.0:$PORT
+    rootDir: backend
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: taskflow
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://taskflow-7e2j.onrender.com/api/auth/google/callback
+      - key: FRONTEND_URL
+        value: https://taskflowapp.site
+      - key: ADMIN_EMAILS
+        value: vasangr27@gmail.com
+      - key: SMTP_EMAIL
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
