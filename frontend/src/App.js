@@ -8,6 +8,28 @@ import SubtaskPage from "@/pages/SubtaskPage";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// ── Token helpers ──────────────────────────────────────────────────────────
+// Get the stored session token (set after OAuth redirect)
+const getStoredToken = () => localStorage.getItem('taskflow_session');
+
+// Build Authorization header for all API calls
+export const getAuthHeaders = () => {
+  const token = getStoredToken();
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+// Extract ?token= from the URL after OAuth redirect and store it
+const extractAndStoreToken = () => {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  if (token) {
+    localStorage.setItem('taskflow_session', token);
+    // Remove the token from the URL to keep it clean (no page reload)
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+};
+
 // Theme Context
 const ThemeContext = createContext();
 
@@ -74,8 +96,12 @@ const ProtectedRoute = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        // Extract token from URL (set after OAuth redirect) and store it first
+        extractAndStoreToken();
+
         const response = await fetch(`${API}/auth/me`, {
           credentials: "include",
+          headers: getAuthHeaders(),
         });
 
         if (!response.ok) {

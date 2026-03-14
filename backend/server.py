@@ -418,21 +418,24 @@ async def google_auth_callback(code: str, request: Request, response: Response):
     await db.user_sessions.delete_many({"user_id": user_id})
     await db.user_sessions.insert_one(session_doc)
     
-    # Determine frontend URL - always the React dev server, not the backend
+    # Determine frontend URL
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
-    
-    # Create redirect response with cookie
-    redirect_response = RedirectResponse(f"{frontend_url}/dashboard")
+
+    # Pass session token in URL — avoids cross-site cookie restrictions
+    # (cookie approach fails when frontend and backend are on different domains)
+    redirect_response = RedirectResponse(f"{frontend_url}/dashboard?token={session_token}")
+
+    # Also set cookie as fallback for local development where same-origin works
     redirect_response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=True,           # Must be True for HTTPS in production
-        samesite="none",       # Required for cross-origin (Vercel frontend + Render backend)
+        secure=True,
+        samesite="none",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
-    
+
     return redirect_response
 
 @api_router.get("/auth/me")
