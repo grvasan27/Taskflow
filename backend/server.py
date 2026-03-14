@@ -320,6 +320,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
     picture = user_info.get('picture')
     
     # Check if user exists
+    user_id = None  # Initialize to avoid UnboundLocalError
     existing_user = await db.users.find_one({"email": email}, {"_id": 0})
     
     if existing_user:
@@ -396,6 +397,12 @@ async def google_auth_callback(code: str, request: Request, response: Response):
             )
         except Exception as e:
             logger.error(f"Failed to create Drive folder: {e}")
+    
+    # Safety guard: user_id must be set by this point
+    if not user_id:
+        logger.error("Auth callback: user_id is None after user lookup/creation. Possible DB connection issue.")
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+        return RedirectResponse(f"{frontend_url}/?error=auth_db_error")
     
     # Create session
     session_token = f"sess_{uuid.uuid4().hex}"
