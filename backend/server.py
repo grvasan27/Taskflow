@@ -325,7 +325,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
     
     if existing_user:
         user_id = existing_user["user_id"]
-        # Update tokens and info
+        # Update tokens and info for returning user
         await db.users.update_one(
             {"user_id": user_id},
             {"$set": {
@@ -334,19 +334,19 @@ async def google_auth_callback(code: str, request: Request, response: Response):
                 "google_tokens": token_data
             }}
         )
-        # Check if this is the first user
+    else:
+        # New user — check limits and create account
         total_users = await db.users.count_documents({})
         is_first_user = total_users == 0
-        
+
         # Check max users limit
         settings = await db.system_settings.find_one({"type": "general"})
         if not settings:
-            # Initialize settings
             await db.system_settings.insert_one({"type": "general", "max_users": 1000})
             max_users = 1000
         else:
             max_users = settings.get("max_users", 1000)
-            
+
         if not is_first_user and total_users >= max_users:
             return RedirectResponse(url=f"{FRONTEND_URL}/?error=max_users_reached")
 
@@ -355,7 +355,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
         is_perma_admin = email.lower() in perma_admins
         is_approved_val = is_first_user or is_perma_admin
         is_admin_val = is_first_user or is_perma_admin
-        
+
         user_doc = {
             "user_id": user_id,
             "email": email,
@@ -372,7 +372,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
             "is_admin": is_admin_val
         }
         await db.users.insert_one(user_doc)
-        
+
         # Create TaskFlow backup folder in Drive for new user
         try:
             creds = Credentials(
@@ -384,20 +384,20 @@ async def google_auth_callback(code: str, request: Request, response: Response):
                 scopes=GOOGLE_SCOPES
             )
             drive_service = build('drive', 'v3', credentials=creds)
-            
+
             folder_metadata = {
                 'name': 'TaskFlow Backup',
                 'mimeType': 'application/vnd.google-apps.folder'
             }
             folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
-            
+
             await db.users.update_one(
                 {"user_id": user_id},
                 {"$set": {"drive_folder_id": folder.get('id')}}
             )
         except Exception as e:
             logger.error(f"Failed to create Drive folder: {e}")
-    
+
     # Safety guard: user_id must be set by this point
     if not user_id:
         logger.error("Auth callback: user_id is None after user lookup/creation. Possible DB connection issue.")
