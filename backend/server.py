@@ -72,6 +72,8 @@ GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 # SMTP Config
 SMTP_EMAIL = os.environ.get('SMTP_EMAIL')
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp-relay.brevo.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/userinfo.email",
@@ -1393,10 +1395,11 @@ async def send_email(to_email: str, subject: str, html_content: str):
     msg['Subject'] = subject
     msg['From'] = f"TaskFlow <{SMTP_EMAIL}>"
     msg['To'] = to_email
+    msg['Reply-To'] = f"No-Reply <noreply@taskflowapp.site>"
     msg.add_alternative(html_content, subtype='html')
 
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.send_message(msg)
