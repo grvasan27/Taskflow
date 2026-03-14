@@ -1,9 +1,10 @@
-services:
   - type: web
     name: taskflow-backend
     env: python
     region: oregon
     plan: free
+    runtime: python
+    pythonVersion: "3.11.0"
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 server:app --bind 0.0.0.0:$PORT
     rootDir: backend
