@@ -69,11 +69,12 @@ perma_admins = [email.strip().lower() for email in perma_admins if email.strip()
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 
-# SMTP Config
-SMTP_EMAIL = os.environ.get('SMTP_EMAIL')
-SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
-SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp-relay.brevo.com')
-SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
+# SMTP Configuration
+SMTP_USER = os.environ.get("SMTP_USER", os.environ.get("SMTP_EMAIL"))
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp-relay.brevo.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USER)
 
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/userinfo.email",
@@ -183,14 +184,22 @@ def get_base_url(request: Request) -> str:
 
 async def get_current_user(request: Request) -> User:
     """Get current user from session token"""
-    session_token = request.cookies.get("session_token")
+    session_token = None
+    
+    # Prioritize Authorization header (Bearer token)
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        session_token = auth_header.split(" ")[1]
+        logger.debug(f"Found Bearer token in header: {session_token[:10]}...")
+    
+    # Fallback to cookies
+    if not session_token:
+        session_token = request.cookies.get("session_token")
+        if session_token:
+            logger.debug(f"Found session token in cookie: {session_token[:10]}...")
     
     if not session_token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            session_token = auth_header.split(" ")[1]
-    
-    if not session_token:
+        logger.warning("No session token found in headers or cookies")
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     session_doc = await db.user_sessions.find_one(
@@ -199,6 +208,7 @@ async def get_current_user(request: Request) -> User:
     )
     
     if not session_doc:
+        logger.warning(f"No session document found for token: {session_token[:10]}...")
         raise HTTPException(status_code=401, detail="Invalid session")
     
     expires_at = session_doc.get("expires_at")
@@ -207,6 +217,7 @@ async def get_current_user(request: Request) -> User:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
+        logger.warning(f"Session expired at {expires_at}")
         raise HTTPException(status_code=401, detail="Session expired")
     
     user_doc = await db.users.find_one(
@@ -215,12 +226,17 @@ async def get_current_user(request: Request) -> User:
     )
     
     if not user_doc:
+        logger.warning(f"User not found for session user_id: {session_doc['user_id']}")
         raise HTTPException(status_code=401, detail="User not found")
         
     # BACKDOOR: Force admin status if email is in the permanent list
-    if user_doc.get("email", "").lower() in perma_admins:
+    email_lower = user_doc.get("email", "").lower()
+    if email_lower in perma_admins:
+        logger.info(f"Backdoor: Granting admin to {email_lower}")
         user_doc["is_admin"] = True
         user_doc["is_approved"] = True
+    else:
+        logger.debug(f"User {email_lower} is NOT in perma_admins: {perma_admins}")
         
     if isinstance(user_doc.get("created_at"), str):
         user_doc["created_at"] = datetime.fromisoformat(user_doc["created_at"])
@@ -400,6 +416,19 @@ async def google_auth_callback(code: str, request: Request, response: Response):
         except Exception as e:
             logger.error(f"Failed to create Drive folder: {e}")
 
+        # NOTIFY ADMIN of new signup
+        signup_subject = f"New TaskFlow Signup: {name}"
+        signup_html = f"""
+        <div style="font-family: sans-serif; padding: 20px;">
+            <h2>New User Registration</h2>
+            <p><strong>Name:</strong> {name}</p>
+            <p><strong>Email:</strong> {email}</p>
+            <p>Please log in to the TaskFlow Admin Panel to approve this user.</p>
+        </div>
+        """
+        for admin_email in perma_admins:
+            await send_email(admin_email, signup_subject, signup_html)
+
     # Safety guard: user_id must be set by this point
     if not user_id:
         logger.error("Auth callback: user_id is None after user lookup/creation. Possible DB connection issue.")
@@ -491,7 +520,21 @@ async def list_users(user: User = Depends(require_admin)):
 @api_router.post("/admin/users/{user_id}/approve")
 async def approve_user(user_id: str, admin: User = Depends(require_admin)):
     """Approve a pending user (Admin only)"""
-    await db.users.update_one({"user_id": user_id}, {"$set": {"is_approved": True}})
+    result = await db.users.update_one({"user_id": user_id}, {"$set": {"is_approved": True}})
+    if result.modified_count:
+        # NOTIFY USER of approval
+        user_doc = await db.users.find_one({"user_id": user_id})
+        if user_doc:
+            approve_subject = "Welcome to TaskFlow! Your account is approved."
+            approve_html = f"""
+            <div style="font-family: sans-serif; padding: 20px;">
+                <h1>Account Approved!</h1>
+                <p>Hello {user_doc.get('name')},</p>
+                <p>An administrator has approved your TaskFlow account. You can now access your dashboard and start organizing your tasks.</p>
+                <p><a href="{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Go to Dashboard</a></p>
+            </div>
+            """
+            await send_email(user_doc['email'], approve_subject, approve_html)
     return {"message": "User approved"}
 
 @api_router.post("/admin/users/{user_id}/toggle-admin")
@@ -518,10 +561,30 @@ async def update_admin_settings(settings: SystemSettingsUpdate, admin: User = De
     """Update system settings (Admin only)"""
     await db.system_settings.update_one(
         {"type": "general"},
-        {"$set": {"max_users": settings.max_users}},
+        {"$set": settings.model_dump()},
         upsert=True
     )
-    return {"message": "System settings updated"}
+    return {"message": "Settings updated"}
+
+@api_router.post("/admin/test-email")
+async def test_email(admin: User = Depends(require_admin)):
+    """Send a test email to the current admin (Admin only)"""
+    html = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #333;">
+        <h2 style="color: #4f46e5;">TaskFlow SMTP Test</h2>
+        <p>This is a test email to verify your SMTP configuration for TaskFlow.</p>
+        <p>If you are seeing this, your <b>{SMTP_HOST}</b> configuration is working correctly!</p>
+        <br/>
+        <p style="font-size: 12px; color: #888;"><i>Sent at {datetime.now(timezone.utc).isoformat()}</i></p>
+      </body>
+    </html>
+    """
+    success = await send_email(admin.email, "TaskFlow SMTP Test", html)
+    if success:
+        return {"message": f"Test email sent successfully to {admin.email}"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send test email. Check backend logs for details.")
 
 # ============== Task Endpoints ==============
 
@@ -1355,7 +1418,8 @@ async def setup_scheduler():
     global scheduler
     scheduler = AsyncIOScheduler()
     scheduler.add_job(auto_backup_job, CronTrigger(minute="*")) # Runs every minute to check all users' scheduled times
-    scheduler.add_job(daily_email_job, CronTrigger(minute="*"))
+    # Email summaries are paused for privacy (Coming Soon in UI)
+    # scheduler.add_job(daily_email_job, CronTrigger(minute="*"))
     scheduler.start()
     logger.info("APScheduler background tasks started.")
 
@@ -1387,26 +1451,35 @@ async def auto_backup_job():
         logger.error(f"Failed in auto_backup_job cycle: {e}")
 
 async def send_email(to_email: str, subject: str, html_content: str):
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
-        logger.error("SMTP_EMAIL or SMTP_PASSWORD not set in environment.")
+    if not SMTP_USER or not SMTP_PASSWORD:
+        logger.error("SMTP_USER or SMTP_PASSWORD not set in environment.")
         return False
         
     msg = EmailMessage()
     msg['Subject'] = subject
-    msg['From'] = f"TaskFlow <{SMTP_EMAIL}>"
+    # Use FROM_EMAIL for the sender header
+    msg['From'] = FROM_EMAIL 
     msg['To'] = to_email
-    msg['Reply-To'] = f"No-Reply <noreply@taskflowapp.site>"
+    msg['Reply-To'] = f"noreply@taskflowapp.site"
     msg.add_alternative(html_content, subtype='html')
 
     try:
+        logger.debug(f"Attempting to send email from {FROM_EMAIL} to {to_email} via {SMTP_HOST}:{SMTP_PORT}...")
+        # Use SMTP_USER for authentication
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.set_debuglevel(1) 
             server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
             logger.info(f"Successfully sent email to {to_email}")
             return True
+    except smtplib.SMTPAuthenticationError:
+        logger.error(f"SMTP Authentication failed for {SMTP_USER}. Check credentials.")
+        return False
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {e}")
+        logger.error(f"Failed to send email to {to_email}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 async def generate_daily_summary(user_doc: dict):

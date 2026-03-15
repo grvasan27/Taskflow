@@ -158,10 +158,8 @@ function AppRouter() {
 }
 
 function App() {
-  useEffect(() => {
-    // Extract token from URL on initial load for ANY route
-    extractAndStoreToken();
-  }, []);
+  // Extract token from URL immediately on load, before any children mount
+  extractAndStoreToken();
 
   return (
     <ThemeProvider>

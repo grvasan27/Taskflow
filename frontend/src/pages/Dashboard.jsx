@@ -157,16 +157,32 @@ const Dashboard = ({ user, setUser }) => {
     if (!user?.is_admin) return;
     setIsLoadingAdmin(true);
     try {
+      const authHeaders = getAuthHeaders();
+      console.log("Fetching admin data with headers:", authHeaders);
+
       const [usersRes, settingsRes] = await Promise.all([
-        fetch(`${API}/admin/users`, { headers: getAuthHeaders() }),
-        fetch(`${API}/admin/settings`, { headers: getAuthHeaders() })
+        fetch(`${API}/admin/users`, { headers: authHeaders, credentials: "include" }),
+        fetch(`${API}/admin/settings`, { headers: authHeaders, credentials: "include" })
       ]);
-      if (usersRes.ok && settingsRes.ok) {
-        setAdminUsers(await usersRes.json());
-        setAdminSettings(await settingsRes.json());
+
+      if (!usersRes.ok || !settingsRes.ok) {
+        console.error("Admin fetch failed:", {
+          users: { status: usersRes.status, text: usersRes.statusText },
+          settings: { status: settingsRes.status, text: settingsRes.statusText }
+        });
+        if (usersRes.status === 401 || settingsRes.status === 401) {
+          toast.error("Session expired. Please log out and back in.");
+        } else {
+          toast.error(`Admin data load failed (${usersRes.status})`);
+        }
+        return;
       }
+
+      setAdminUsers(await usersRes.json());
+      setAdminSettings(await settingsRes.json());
     } catch (err) {
-      toast.error("Failed to load admin data");
+      console.error("Connection error in fetchAdminData:", err);
+      toast.error("Failed to connect to admin API");
     } finally {
       setIsLoadingAdmin(false);
     }
@@ -176,7 +192,8 @@ const Dashboard = ({ user, setUser }) => {
     try {
       const res = await fetch(`${API}/admin/users/${userId}/approve`, {
         method: "POST",
-        headers: getAuthHeaders()
+        headers: getAuthHeaders(),
+        credentials: "include"
       });
       if (res.ok) {
         toast.success("User approved");
@@ -191,7 +208,8 @@ const Dashboard = ({ user, setUser }) => {
     try {
       const res = await fetch(`${API}/admin/users/${userId}/toggle-admin`, {
         method: "POST",
-        headers: getAuthHeaders()
+        headers: getAuthHeaders(),
+        credentials: "include"
       });
       if (res.ok) {
         toast.success("Admin status updated");
@@ -210,6 +228,7 @@ const Dashboard = ({ user, setUser }) => {
           "Content-Type": "application/json",
           ...getAuthHeaders()
         },
+        credentials: "include",
         body: JSON.stringify(adminSettings)
       });
       if (res.ok) {
@@ -217,6 +236,24 @@ const Dashboard = ({ user, setUser }) => {
       }
     } catch (err) {
       toast.error("Failed to update settings");
+    }
+  };
+
+  const handleTestEmail = async () => {
+    try {
+      const res = await fetch(`${API}/admin/test-email`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
+      if (res.ok) {
+        toast.success("Test email sent! Check your inbox.");
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || "Failed to send test email");
+      }
+    } catch (err) {
+      toast.error("Connection error while sending test email");
     }
   };
 
@@ -1736,27 +1773,30 @@ const Dashboard = ({ user, setUser }) => {
                 )}
               </div>
 
-              <div className="flex flex-col gap-4 bg-muted/30 p-4 rounded-lg border border-border">
+              <div className="flex flex-col gap-4 bg-muted/30 p-4 rounded-lg border border-border opacity-70">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium text-sm">Daily Email Reminders</h4>
+                    <h4 className="font-medium text-sm flex items-center gap-2">
+                      Daily Email Reminders
+                      <span className="text-[10px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Coming Soon</span>
+                    </h4>
                     <p className="text-xs text-muted-foreground">Receive a clean HTML summary of today's schedule.</p>
                   </div>
                   <div
-                    className={`w-10 h-5 rounded-full cursor-pointer transition-colors relative flex items-center ${user?.email_reminders_enabled ? 'bg-primary' : 'bg-muted-foreground'}`}
-                    onClick={() => setUser(prev => ({ ...prev, email_reminders_enabled: !prev?.email_reminders_enabled }))}
+                    className="w-10 h-5 rounded-full cursor-not-allowed bg-muted-foreground/30 relative flex items-center"
+                    title="This feature is temporarily disabled for privacy"
                   >
-                    <div className={`w-4 h-4 rounded-full bg-white shadow-sm absolute transition-transform transform ${user?.email_reminders_enabled ? 'translate-x-5' : 'translate-x-1'}`}></div>
+                    <div className="w-4 h-4 rounded-full bg-white/50 shadow-sm absolute transition-transform transform translate-x-1"></div>
                   </div>
                 </div>
 
                 {user?.email_reminders_enabled && (
-                  <div className="grid grid-cols-2 items-center gap-4 mt-2">
+                  <div className="grid grid-cols-2 items-center gap-4 mt-2 opacity-50 grayscale pointer-events-none">
                     <p className="text-sm font-medium">Delivery Time</p>
                     <Input
                       type="time"
+                      disabled
                       value={user?.email_reminder_time || "08:00"}
-                      onChange={(e) => setUser(prev => ({ ...prev, email_reminder_time: e.target.value }))}
                     />
                   </div>
                 )}
@@ -1795,6 +1835,18 @@ const Dashboard = ({ user, setUser }) => {
                       <Button size="sm" onClick={handleUpdateAdminSettings}>Update</Button>
                     </div>
                     <p className="text-[10px] text-muted-foreground">Sets the hard cap for new Google signups.</p>
+                  </div>
+                  <div className="space-y-1.5 flex flex-col justify-center">
+                    <label className="text-sm font-medium">SMTP Diagnostics</label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full flex items-center gap-2"
+                      onClick={handleTestEmail}
+                    >
+                      <Bell className="h-4 w-4" /> Send Test Email
+                    </Button>
+                    <p className="text-[10px] text-muted-foreground">Sends a diagnostic email to {user?.email}.</p>
                   </div>
                   <div className="space-y-1.5 flex flex-col justify-center">
                     <label className="text-sm font-medium">Total Active Users</label>
