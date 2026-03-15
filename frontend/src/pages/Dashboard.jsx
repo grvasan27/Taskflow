@@ -182,7 +182,10 @@ const Dashboard = ({ user, setUser }) => {
       setAdminSettings(await settingsRes.json());
     } catch (err) {
       console.error("Connection error in fetchAdminData:", err);
-      toast.error("Failed to connect to admin API");
+      // Log the full error object details if possible
+      if (err.name) console.error("Error Name:", err.name);
+      if (err.message) console.error("Error Message:", err.message);
+      toast.error(`Failed to connect to admin API: ${err.message || 'Unknown error'}`);
     } finally {
       setIsLoadingAdmin(false);
     }
@@ -254,6 +257,26 @@ const Dashboard = ({ user, setUser }) => {
       }
     } catch (err) {
       toast.error("Connection error while sending test email");
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm("Are you sure you want to PERMANENTLY delete this user and all their data? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`${API}/admin/users/${userId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+        credentials: "include"
+      });
+      if (res.ok) {
+        toast.success("User deleted successfully");
+        fetchAdminData();
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || "Failed to delete user");
+      }
+    } catch (err) {
+      toast.error("Connection error while deleting user");
     }
   };
 
@@ -1911,6 +1934,9 @@ const Dashboard = ({ user, setUser }) => {
                             )}
                             <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={() => handleToggleAdmin(u.user_id)}>
                               {u.is_admin ? "Demote" : "Make Admin"}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-[10px] text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteUser(u.user_id)}>
+                              Delete
                             </Button>
                           </td>
                         </tr>

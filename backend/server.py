@@ -236,7 +236,7 @@ async def get_current_user(request: Request) -> User:
         user_doc["is_admin"] = True
         user_doc["is_approved"] = True
     else:
-        logger.debug(f"User {email_lower} is NOT in perma_admins: {perma_admins}")
+        logger.info(f"User {email_lower} is NOT in perma_admins: {perma_admins}")
         
     if isinstance(user_doc.get("created_at"), str):
         user_doc["created_at"] = datetime.fromisoformat(user_doc["created_at"])
@@ -246,7 +246,9 @@ async def get_current_user(request: Request) -> User:
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     """Dependency to check if user is an admin"""
     if not user.is_admin:
+        logger.warning(f"Admin access denied for user: {user.email}")
         raise HTTPException(status_code=403, detail="Admin access required")
+    logger.info(f"Admin access granted for user: {user.email}")
     return user
 
 async def get_google_credentials(user_id: str) -> Optional[Credentials]:
@@ -333,25 +335,38 @@ async def google_auth_callback(code: str, request: Request, response: Response):
         return RedirectResponse(f"{base_url}/?error=user_info_failed")
     
     user_info = user_info_resp.json()
-    email = user_info.get('email')
+    email = user_info.get('email', '').strip().lower()
     name = user_info.get('name')
     picture = user_info.get('picture')
     
+    if not email:
+        logger.error("Google OAuth: No email received in user info")
+        return RedirectResponse(f"{base_url}/?error=no_email")
+
     # Check if user exists
-    user_id = None  # Initialize to avoid UnboundLocalError
+    user_id = None  # Ensure it is initialized
+    is_perma_admin = email in perma_admins
+    
     existing_user = await db.users.find_one({"email": email}, {"_id": 0})
     
     if existing_user:
         user_id = existing_user["user_id"]
+        logger.info(f"Existing user login: {email} (ID: {user_id})")
+        
         # Update tokens and info for returning user
-        await db.users.update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "name": name,
-                "picture": picture,
-                "google_tokens": token_data
-            }}
-        )
+        updates = {
+            "name": name,
+            "picture": picture,
+            "google_tokens": token_data
+        }
+        
+        # PERSISTENT ADMIN SYNC: If they are in the perma_admins list, ensure they are admin/approved
+        if is_perma_admin:
+            logger.info(f"Syncing admin status for permanent admin: {email}")
+            updates["is_admin"] = True
+            updates["is_approved"] = True
+            
+        await db.users.update_one({"user_id": user_id}, {"$set": updates})
     else:
         # New user — check limits and create account
         total_users = await db.users.count_documents({})
@@ -370,7 +385,6 @@ async def google_auth_callback(code: str, request: Request, response: Response):
 
         # Create new user
         user_id = f"user_{uuid.uuid4().hex[:12]}"
-        is_perma_admin = email.lower() in perma_admins
         is_approved_val = is_first_user or is_perma_admin
         is_admin_val = is_first_user or is_perma_admin
 
@@ -390,8 +404,13 @@ async def google_auth_callback(code: str, request: Request, response: Response):
             "is_admin": is_admin_val
         }
         await db.users.insert_one(user_doc)
+        logger.info(f"New user registered: {email} (Admin: {is_admin_val})")
 
-        # Create TaskFlow backup folder in Drive for new user
+    # Refresh user document to check for Drive folder
+    user_doc_final = await db.users.find_one({"user_id": user_id})
+
+    # Create TaskFlow backup folder in Drive if it doesn't exist
+    if not user_doc_final.get("drive_folder_id"):
         try:
             creds = Credentials(
                 token=token_data.get('access_token'),
@@ -408,15 +427,18 @@ async def google_auth_callback(code: str, request: Request, response: Response):
                 'mimeType': 'application/vnd.google-apps.folder'
             }
             folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
+            folder_id = folder.get('id')
 
             await db.users.update_one(
                 {"user_id": user_id},
-                {"$set": {"drive_folder_id": folder.get('id')}}
+                {"$set": {"drive_folder_id": folder_id}}
             )
+            logger.info(f"Drive folder created for {email}: {folder_id}")
         except Exception as e:
-            logger.error(f"Failed to create Drive folder: {e}")
+            logger.error(f"Failed to create Drive folder for {email}: {e}")
 
-        # NOTIFY ADMIN of new signup
+    # NOTIFY ADMIN of new signup if it was a new user (optional, but good for tracking)
+    if not existing_user:
         signup_subject = f"New TaskFlow Signup: {name}"
         signup_html = f"""
         <div style="font-family: sans-serif; padding: 20px;">
@@ -429,12 +451,6 @@ async def google_auth_callback(code: str, request: Request, response: Response):
         for admin_email in perma_admins:
             await send_email(admin_email, signup_subject, signup_html)
 
-    # Safety guard: user_id must be set by this point
-    if not user_id:
-        logger.error("Auth callback: user_id is None after user lookup/creation. Possible DB connection issue.")
-        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
-        return RedirectResponse(f"{frontend_url}/?error=auth_db_error")
-    
     # Create session
     session_token = f"sess_{uuid.uuid4().hex}"
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
@@ -452,11 +468,10 @@ async def google_auth_callback(code: str, request: Request, response: Response):
     # Determine frontend URL
     frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
-    # Pass session token in URL — avoids cross-site cookie restrictions
-    # (cookie approach fails when frontend and backend are on different domains)
+    # Pass session token in URL
     redirect_response = RedirectResponse(f"{frontend_url}/dashboard?token={session_token}")
 
-    # Also set cookie as fallback for local development where same-origin works
+    # Set cookie as fallback
     redirect_response.set_cookie(
         key="session_token",
         value=session_token,
@@ -514,8 +529,14 @@ async def update_settings(settings: UserSettingsUpdate, user: User = Depends(get
 @api_router.get("/admin/users")
 async def list_users(user: User = Depends(require_admin)):
     """List all users (Admin only)"""
-    users = await db.users.find({}, {"google_tokens": 0}).to_list(1000)
-    return users
+    logger.info("Admin: Fetching user list...")
+    try:
+        users = await db.users.find({}, {"google_tokens": 0, "_id": 0}).to_list(1000)
+        logger.info(f"Admin: Found {len(users)} users.")
+        return users
+    except Exception as e:
+        logger.error(f"Admin: Failed to fetch users: {e}")
+        raise HTTPException(status_code=500, detail="Database error while fetching users")
 
 @api_router.post("/admin/users/{user_id}/approve")
 async def approve_user(user_id: str, admin: User = Depends(require_admin)):
@@ -548,10 +569,28 @@ async def toggle_admin(user_id: str, admin: User = Depends(require_admin)):
     await db.users.update_one({"user_id": user_id}, {"$set": {"is_admin": new_status}})
     return {"message": f"User admin status set to {new_status}"}
 
+@api_router.delete("/admin/users/{user_id}")
+async def delete_user(user_id: str, admin: User = Depends(require_admin)):
+    """Permanently delete a user (Admin only)"""
+    # Prevent deleting self
+    if user_id == admin.user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own admin account")
+        
+    # Delete sessions
+    await db.user_sessions.delete_many({"user_id": user_id})
+    # Delete tasks
+    await db.tasks.delete_many({"user_id": user_id})
+    # Delete subtasks
+    await db.subtasks.delete_many({"user_id": user_id})
+    # Delete user record
+    await db.users.delete_one({"user_id": user_id})
+    
+    return {"message": "User and all associated data deleted successfully"}
+
 @api_router.get("/admin/settings")
 async def get_admin_settings(admin: User = Depends(require_admin)):
     """Get system settings (Admin only)"""
-    settings = await db.system_settings.find_one({"type": "general"})
+    settings = await db.system_settings.find_one({"type": "general"}, {"_id": 0})
     if not settings:
         return {"max_users": 1000}
     return settings
@@ -1416,6 +1455,13 @@ app.add_middleware(
 @app.on_event("startup")
 async def setup_scheduler():
     global scheduler
+    # Create unique index on email
+    try:
+        await db.users.create_index("email", unique=True)
+        logger.info("Unique index on email ensured.")
+    except Exception as e:
+        logger.error(f"Failed to create unique index: {e}")
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(auto_backup_job, CronTrigger(minute="*")) # Runs every minute to check all users' scheduled times
     # Email summaries are paused for privacy (Coming Soon in UI)
