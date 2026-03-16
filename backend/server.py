@@ -49,7 +49,18 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[get_env_var('DB_NAME')]
 
 # Create the main app
-app = FastAPI()
+ENV = os.environ.get("ENV", "dev")
+
+if ENV == "prod":
+    app = FastAPI(
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None
+    )
+    print("Running in PRODUCTION mode - API documentation disabled.")
+else:
+    app = FastAPI()
+    print("Running in DEVELOPMENT mode - API documentation enabled.")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -367,6 +378,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
             updates["is_approved"] = True
             
         await db.users.update_one({"user_id": user_id}, {"$set": updates})
+        logger.info(f"Auth: Login successful for existing user {email}")
     else:
         # New user — check limits and create account
         total_users = await db.users.count_documents({})
@@ -381,6 +393,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
             max_users = settings.get("max_users", 1000)
 
         if not is_first_user and total_users >= max_users:
+            logger.warning(f"Auth: Max users limit ({max_users}) reached. Denying {email}")
             return RedirectResponse(url=f"{FRONTEND_URL}/?error=max_users_reached")
 
         # Create new user
@@ -404,7 +417,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
             "is_admin": is_admin_val
         }
         await db.users.insert_one(user_doc)
-        logger.info(f"New user registered: {email} (Admin: {is_admin_val})")
+        logger.info(f"Auth: New user registered: {email} (Approved: {is_approved_val}, Admin: {is_admin_val})")
 
     # Refresh user document to check for Drive folder
     user_doc_final = await db.users.find_one({"user_id": user_id})
@@ -437,18 +450,25 @@ async def google_auth_callback(code: str, request: Request, response: Response):
         except Exception as e:
             logger.error(f"Failed to create Drive folder for {email}: {e}")
 
-    # NOTIFY ADMIN of new signup if it was a new user (optional, but good for tracking)
+    # NOTIFY ADMIN of new signup if it was a new user
     if not existing_user:
+        logger.info(f"Auth: Triggering admin notification for {email} to admins: {perma_admins}")
+        if not perma_admins:
+            logger.warning("Auth: No ADMIN_EMAILS set! Cannot send signup notification.")
+        
         signup_subject = f"New TaskFlow Signup: {name}"
         signup_html = f"""
         <div style="font-family: sans-serif; padding: 20px;">
-            <h2>New User Registration</h2>
+            <h2 style="color: #4f46e5;">New User Registration</h2>
             <p><strong>Name:</strong> {name}</p>
             <p><strong>Email:</strong> {email}</p>
             <p>Please log in to the TaskFlow Admin Panel to approve this user.</p>
+            <hr/>
+            <p style="font-size: 11px; color: #888;">TaskFlow Security Notification</p>
         </div>
         """
         for admin_email in perma_admins:
+            logger.info(f"Auth: Sending signup notification to {admin_email}")
             await send_email(admin_email, signup_subject, signup_html)
 
     # Create session
