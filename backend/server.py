@@ -398,7 +398,7 @@ async def google_auth_callback(code: str, request: Request, response: Response):
 
         # Create new user
         user_id = f"user_{uuid.uuid4().hex[:12]}"
-        is_approved_val = is_first_user or is_perma_admin
+        is_approved_val = True  # All new users are auto-approved by default
         is_admin_val = is_first_user or is_perma_admin
 
         user_doc = {
