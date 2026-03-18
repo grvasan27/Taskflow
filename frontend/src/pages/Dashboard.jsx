@@ -127,6 +127,28 @@ const Dashboard = ({ user, setUser }) => {
   const [isLoadingAdmin, setIsLoadingAdmin] = useState(false);
   const scrollContainerRef = useRef(null);
   const notificationIntervalRef = useRef(null);
+  const leftPanelWidth = useRef(430);
+  const [leftPanelWidthState, setLeftPanelWidthState] = useState(430);
+  const isDraggingPanel = useRef(false);
+
+  const handlePanelResizeStart = (e) => {
+    isDraggingPanel.current = true;
+    const startX = e.clientX;
+    const startW = leftPanelWidth.current;
+    const onMove = (me) => {
+      if (!isDraggingPanel.current) return;
+      const newW = Math.min(650, Math.max(300, startW + me.clientX - startX));
+      leftPanelWidth.current = newW;
+      setLeftPanelWidthState(newW);
+    };
+    const onUp = () => {
+      isDraggingPanel.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   // Sync expansion panel height between left/right halves
   const expandedPanelRef = useRef(null);
@@ -1097,7 +1119,7 @@ const Dashboard = ({ user, setUser }) => {
           <div className="border border-border rounded-sm bg-card overflow-hidden">
             <div className="flex">
               {/* Fixed Left Panel */}
-              <div className="flex-shrink-0 border-r border-border bg-card z-10 w-[430px]">
+              <div className="flex-shrink-0 border-r border-border bg-card z-10 relative" style={{ width: leftPanelWidthState }}>
                 <div className="flex border-b border-border bg-muted/50 h-12">
                   <div className="w-[180px] px-4 py-3 font-medium text-sm flex items-center cursor-pointer hover:bg-muted/80 transition-colors select-none"
                     onClick={() => toggleSort('created')}
@@ -1426,6 +1448,14 @@ const Dashboard = ({ user, setUser }) => {
                     </Droppable>
                   </DragDropContext>
                 )}
+                {/* Drag Resize Handle */}
+                <div
+                  onMouseDown={handlePanelResizeStart}
+                  className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-20 hover:bg-accent/40 transition-colors group"
+                  title="Drag to resize columns"
+                >
+                  <div className="absolute inset-y-0 right-0 w-px bg-border group-hover:bg-accent transition-colors" />
+                </div>
               </div>
 
               {/* Scrollable Gantt Area */}
@@ -1450,11 +1480,45 @@ const Dashboard = ({ user, setUser }) => {
 
                     return (
                       <div key={task.task_id}>
-                        {/* Task Row - empty */}
+                        {/* Task Row - empty or summary when collapsed */}
                         <div className="flex border-b border-border h-14 bg-muted/30">
-                          {dateColumns.map((date, index) => (
-                            <div key={index} className={`flex-shrink-0 border-r border-border/30 ${isToday(date) ? "bg-accent/5" : ""}`} style={{ width: cellWidth }} />
-                          ))}
+                          {dateColumns.map((date, index) => {
+                            const dateStr = format(date, "yyyy-MM-dd");
+                            const isCollapsed = collapsedTasks.has(task.task_id);
+                            // Build summary dots for collapsed tasks
+                            let summaryEl = null;
+                            if (isCollapsed && subtasks.length > 0) {
+                              const inRangeSubs = subtasks.filter(s => isDateInSubtaskRange(s, dateStr));
+                              if (inRangeSubs.length > 0) {
+                                const completedCount = inRangeSubs.filter(s => isDayCompleted(s, dateStr)).length;
+                                const overdueCount = inRangeSubs.filter(s => isOverdue(s, dateStr)).length;
+                                const plannedCount = inRangeSubs.length - completedCount - overdueCount;
+                                // Pick dominant color: all done=green, any overdue=red, else blue
+                                let dotColor;
+                                if (completedCount === inRangeSubs.length) dotColor = "bg-success/50";
+                                else if (overdueCount > 0 && completedCount === 0) dotColor = "bg-destructive/40";
+                                else if (overdueCount > 0) dotColor = "bg-amber-400/50";
+                                else dotColor = "bg-accent/40";
+                                summaryEl = (
+                                  <div className="flex flex-col items-center justify-center gap-0.5 w-full h-full">
+                                    <div className={`rounded-full ${dotColor} transition-colors`} style={{ width: Math.min(cellWidth - 6, 10), height: Math.min(cellWidth - 6, 10) }} />
+                                    {inRangeSubs.length > 1 && (
+                                      <span className="text-[7px] text-muted-foreground/60 leading-none">{completedCount}/{inRangeSubs.length}</span>
+                                    )}
+                                  </div>
+                                );
+                              }
+                            }
+                            return (
+                              <div
+                                key={index}
+                                className={`flex-shrink-0 border-r border-border/30 flex items-center justify-center ${isToday(date) ? "bg-accent/5" : ""}`}
+                                style={{ width: cellWidth }}
+                              >
+                                {summaryEl}
+                              </div>
+                            );
+                          })}
                         </div>
 
                         {/* Subtask Rows with Day-by-Day Checkboxes */}
