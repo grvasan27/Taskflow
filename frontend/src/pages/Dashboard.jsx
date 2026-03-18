@@ -104,6 +104,16 @@ const Dashboard = ({ user, setUser }) => {
   const [editTaskReminder, setEditTaskReminder] = useState("");
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [taskSubtasksMap, setTaskSubtasksMap] = useState({});
+  const [collapsedTasks, setCollapsedTasks] = useState(new Set());
+
+  const toggleSubtasksCollapsed = (taskId) => {
+    setCollapsedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
   const [newSubtask, setNewSubtask] = useState({ name: "", start_date: format(new Date(), "yyyy-MM-dd"), end_date: format(addDays(new Date(), 7), "yyyy-MM-dd"), date_mode: "range", custom_dates: [], time_slot: "" });
   const [editingSlot, setEditingSlot] = useState(null); // { subtaskId, value }
   const [addingSubtask, setAddingSubtask] = useState(false);
@@ -1160,6 +1170,17 @@ const Dashboard = ({ user, setUser }) => {
                                               <span className="font-medium text-sm line-clamp-2 break-words leading-tight flex-1">{task.name}</span>
                                               <span className={`text-[10px] shrink-0 transition-transform ${expandedTaskId === task.task_id ? "rotate-90" : ""}`}>▶</span>
                                             </div>
+                                            {subtasks.length > 0 && (
+                                              <button
+                                                title={collapsedTasks.has(task.task_id) ? "Show subtasks" : "Hide subtasks"}
+                                                onClick={(e) => { e.stopPropagation(); toggleSubtasksCollapsed(task.task_id); }}
+                                                className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors p-0.5 rounded"
+                                              >
+                                                {collapsedTasks.has(task.task_id)
+                                                  ? <ChevronRight className="h-3.5 w-3.5" />
+                                                  : <ChevronDown className="h-3.5 w-3.5" />}
+                                              </button>
+                                            )}
                                           </div>
                                           <div className="w-[95px] px-1 py-2 flex items-center justify-center">
                                             {subtasks.length > 0 ? (() => {
@@ -1201,7 +1222,7 @@ const Dashboard = ({ user, setUser }) => {
                                     </div>
 
                                     {/* Subtask Rows */}
-                                    {subtasks.map((subtask) => {
+                                    {!collapsedTasks.has(task.task_id) && subtasks.map((subtask) => {
                                       const stCompletions = subtask.day_completions || {};
                                       const stTotal = Object.keys(stCompletions).length;
                                       const stDone = Object.values(stCompletions).filter(v => v.completed).length;
@@ -1437,7 +1458,7 @@ const Dashboard = ({ user, setUser }) => {
                         </div>
 
                         {/* Subtask Rows with Day-by-Day Checkboxes */}
-                        {subtasks.map((subtask) => (
+                        {!collapsedTasks.has(task.task_id) && subtasks.map((subtask) => (
                           <div key={subtask.subtask_id} className="flex border-b border-border/50 h-[64px]">
                             {dateColumns.map((date, index) => {
                               const dateStr = format(date, "yyyy-MM-dd");
