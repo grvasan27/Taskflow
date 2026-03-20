@@ -271,16 +271,19 @@ async def get_google_credentials(user_id: str) -> Optional[Credentials]:
     
     tokens = user_doc["google_tokens"]
     
-    # Parse stored expiry datetime so creds.expired is accurate
+    # google-auth internals use datetime.utcnow() (naive) so Credentials.expiry must be naive UTC.
+    # We store it as naive UTC ISO string in the DB.
     stored_expiry = tokens.get("token_expiry")
-    expiry_dt = None
+    expiry_naive = None   # naive UTC, for passing to Credentials
+    expiry_aware = None   # aware UTC, for our own manual check
     if stored_expiry:
         try:
-            expiry_dt = datetime.fromisoformat(stored_expiry)
-            if expiry_dt.tzinfo is None:
-                expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+            dt = datetime.fromisoformat(stored_expiry)
+            # Strip tzinfo to get naive UTC (what google-auth expects)
+            expiry_naive = dt.replace(tzinfo=None)
+            expiry_aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
         except Exception:
-            expiry_dt = None
+            pass
 
     creds = Credentials(
         token=tokens.get('access_token'),
@@ -289,20 +292,17 @@ async def get_google_credentials(user_id: str) -> Optional[Credentials]:
         client_id=GOOGLE_CLIENT_ID,
         client_secret=GOOGLE_CLIENT_SECRET,
         scopes=GOOGLE_SCOPES,
-        expiry=expiry_dt
+        expiry=expiry_naive   # Must be naive UTC for google-auth compatibility
     )
     
-    # Manual expiry check to avoid offset-naive vs offset-aware TypeError in google-auth internals
+    # Manual expiry check using timezone-aware datetimes (safer than creds.expired)
     now_utc = datetime.now(timezone.utc)
-    is_expired = (expiry_dt is None) or (now_utc >= expiry_dt)
+    is_expired = (expiry_aware is None) or (now_utc >= expiry_aware)
     if is_expired and creds.refresh_token:
         try:
             creds.refresh(GoogleRequest())
-            # Save back with explicit UTC timezone so future loads are timezone-aware
-            raw_expiry = creds.expiry
-            if raw_expiry and raw_expiry.tzinfo is None:
-                raw_expiry = raw_expiry.replace(tzinfo=timezone.utc)
-            new_expiry = raw_expiry.isoformat() if raw_expiry else None
+            # creds.expiry after refresh is naive UTC — store it as-is
+            new_expiry = creds.expiry.isoformat() if creds.expiry else None
             await db.users.update_one(
                 {"user_id": user_id},
                 {"$set": {
