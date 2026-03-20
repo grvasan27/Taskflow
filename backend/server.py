@@ -1128,13 +1128,15 @@ async def get_calendar_status(user: User = Depends(get_current_user)):
 @api_router.post("/calendar/sync")
 async def sync_to_calendar(request: CalendarSyncRequest, user: User = Depends(get_current_user)):
     """Sync all subtasks to Google Calendar as daily events"""
+    import asyncio
     creds = await get_google_credentials(user.user_id)
     
     if not creds:
         raise HTTPException(status_code=400, detail="Google not connected. Please login again.")
     
     try:
-        service = build('calendar', 'v3', credentials=creds)
+        # build() is blocking I/O — run in a thread to avoid blocking the event loop
+        service = await asyncio.to_thread(build, 'calendar', 'v3', credentials=creds)
         
         # Process pending deletions first
         user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
@@ -1142,7 +1144,10 @@ async def sync_to_calendar(request: CalendarSyncRequest, user: User = Depends(ge
         if pending_deletes:
             for event_id in pending_deletes:
                 try:
-                    service.events().delete(calendarId='primary', eventId=event_id).execute()
+                    eid = event_id
+                    await asyncio.to_thread(
+                        lambda: service.events().delete(calendarId='primary', eventId=eid).execute()
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to delete pending event {event_id}: {e}")
             
@@ -1192,7 +1197,10 @@ async def sync_to_calendar(request: CalendarSyncRequest, user: User = Depends(ge
                 # Cleanup legacy single event if present
                 if old_calendar_event_id:
                     try:
-                        service.events().delete(calendarId='primary', eventId=old_calendar_event_id).execute()
+                        oid = old_calendar_event_id
+                        await asyncio.to_thread(
+                            lambda: service.events().delete(calendarId='primary', eventId=oid).execute()
+                        )
                     except Exception:
                         pass
                     await db.subtasks.update_one(
@@ -1234,18 +1242,21 @@ async def sync_to_calendar(request: CalendarSyncRequest, user: User = Depends(ge
                     
                     try:
                         if existing_event_id:
-                            service.events().update(
-                                calendarId='primary',
-                                eventId=existing_event_id,
-                                body=event_body
-                            ).execute()
+                            eid, eb = existing_event_id, event_body
+                            await asyncio.to_thread(
+                                lambda: service.events().update(
+                                    calendarId='primary', eventId=eid, body=eb
+                                ).execute()
+                            )
                             new_event_ids[date_str] = existing_event_id
                         else:
-                            event = service.events().insert(
-                                calendarId='primary',
-                                body=event_body
-                            ).execute()
-                            new_event_ids[date_str] = event['id']
+                            eb = event_body
+                            result = await asyncio.to_thread(
+                                lambda: service.events().insert(
+                                    calendarId='primary', body=eb
+                                ).execute()
+                            )
+                            new_event_ids[date_str] = result['id']
                         
                         synced_count += 1
                     except Exception as e:
@@ -1255,7 +1266,10 @@ async def sync_to_calendar(request: CalendarSyncRequest, user: User = Depends(ge
                 for old_date, old_id in calendar_event_ids.items():
                     if old_date not in active_dates:
                         try:
-                            service.events().delete(calendarId='primary', eventId=old_id).execute()
+                            oid = old_id
+                            await asyncio.to_thread(
+                                lambda: service.events().delete(calendarId='primary', eventId=oid).execute()
+                            )
                         except Exception:
                             pass
                 
