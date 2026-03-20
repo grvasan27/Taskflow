@@ -82,13 +82,13 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 cd frontend
 
 # Install dependencies
-yarn install
+npm install
 
 # Create environment file
 echo "REACT_APP_BACKEND_URL=http://localhost:8000" > .env
 
 # Start the frontend
-yarn start
+npm start
 ```
 
 Open `http://localhost:3000` in your browser.
