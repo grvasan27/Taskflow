@@ -292,13 +292,17 @@ async def get_google_credentials(user_id: str) -> Optional[Credentials]:
         expiry=expiry_dt
     )
     
-    # Only refresh if we know the token is expired or expiry is unknown
-    is_expired = (expiry_dt is None) or creds.expired
+    # Manual expiry check to avoid offset-naive vs offset-aware TypeError in google-auth internals
+    now_utc = datetime.now(timezone.utc)
+    is_expired = (expiry_dt is None) or (now_utc >= expiry_dt)
     if is_expired and creds.refresh_token:
         try:
             creds.refresh(GoogleRequest())
-            # Save both access_token and new expiry back to DB
-            new_expiry = creds.expiry.isoformat() if creds.expiry else None
+            # Save back with explicit UTC timezone so future loads are timezone-aware
+            raw_expiry = creds.expiry
+            if raw_expiry and raw_expiry.tzinfo is None:
+                raw_expiry = raw_expiry.replace(tzinfo=timezone.utc)
+            new_expiry = raw_expiry.isoformat() if raw_expiry else None
             await db.users.update_one(
                 {"user_id": user_id},
                 {"$set": {
