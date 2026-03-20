@@ -271,24 +271,44 @@ async def get_google_credentials(user_id: str) -> Optional[Credentials]:
     
     tokens = user_doc["google_tokens"]
     
+    # Parse stored expiry datetime so creds.expired is accurate
+    stored_expiry = tokens.get("token_expiry")
+    expiry_dt = None
+    if stored_expiry:
+        try:
+            expiry_dt = datetime.fromisoformat(stored_expiry)
+            if expiry_dt.tzinfo is None:
+                expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            expiry_dt = None
+
     creds = Credentials(
         token=tokens.get('access_token'),
         refresh_token=tokens.get('refresh_token'),
         token_uri='https://oauth2.googleapis.com/token',
         client_id=GOOGLE_CLIENT_ID,
         client_secret=GOOGLE_CLIENT_SECRET,
-        scopes=GOOGLE_SCOPES
+        scopes=GOOGLE_SCOPES,
+        expiry=expiry_dt
     )
     
-    if creds.expired and creds.refresh_token:
+    # Only refresh if we know the token is expired or expiry is unknown
+    is_expired = (expiry_dt is None) or creds.expired
+    if is_expired and creds.refresh_token:
         try:
             creds.refresh(GoogleRequest())
+            # Save both access_token and new expiry back to DB
+            new_expiry = creds.expiry.isoformat() if creds.expiry else None
             await db.users.update_one(
                 {"user_id": user_id},
-                {"$set": {"google_tokens.access_token": creds.token}}
+                {"$set": {
+                    "google_tokens.access_token": creds.token,
+                    "google_tokens.token_expiry": new_expiry
+                }}
             )
+            logger.info(f"Token refreshed for user {user_id}, new expiry: {new_expiry}")
         except Exception as e:
-            logger.error(f"Failed to refresh Google token: {e}")
+            logger.error(f"Failed to refresh Google token for {user_id}: {e}")
             return None
     
     return creds
